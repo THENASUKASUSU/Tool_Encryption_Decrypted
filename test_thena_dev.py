@@ -21,8 +21,8 @@ class TestThenaDevSimple(unittest.TestCase):
             os.remove(self.encrypted_file)
         if os.path.exists(self.decrypted_file):
             os.remove(self.decrypted_file)
-        if os.path.exists(".master_key_encrypted_v14"):
-            os.remove(".master_key_encrypted_v14")
+        if os.path.exists(".master_key_encrypted_v15"):
+            os.remove(".master_key_encrypted_v15")
 
     def test_encrypt_decrypt_simple(self):
         """Test simple encryption and decryption of a file."""
@@ -54,8 +54,8 @@ class TestThenaDevMasterKey(unittest.TestCase):
             os.remove(self.encrypted_file)
         if os.path.exists(self.decrypted_file):
             os.remove(self.decrypted_file)
-        if os.path.exists(".master_key_encrypted_v14"):
-            os.remove(".master_key_encrypted_v14")
+        if os.path.exists(".master_key_encrypted_v15"):
+            os.remove(".master_key_encrypted_v15")
 
     def test_encrypt_decrypt_master_key(self):
         """Test master key encryption and decryption of a file."""
@@ -89,8 +89,8 @@ class TestThenaDevCLI(unittest.TestCase):
             os.remove(self.encrypted_file)
         if os.path.exists(self.decrypted_file):
             os.remove(self.decrypted_file)
-        if os.path.exists(".master_key_encrypted_v14"):
-            os.remove(".master_key_encrypted_v14")
+        if os.path.exists(".master_key_encrypted_v15"):
+            os.remove(".master_key_encrypted_v15")
 
     def test_cli_encrypt_decrypt(self):
         """Test encryption and decryption using the CLI."""
@@ -120,6 +120,42 @@ class TestThenaDevCLI(unittest.TestCase):
         self.assertEqual(result.returncode, 0, f"Decryption failed with stderr: {result.stderr}")
         self.assertTrue(os.path.exists(self.decrypted_file))
 
+        with open(self.decrypted_file, "r") as f:
+            decrypted_content = f.read()
+        with open(self.test_file, "r") as f:
+            original_content = f.read()
+        self.assertEqual(decrypted_content, original_content)
+
+class TestThenaDevBcrypt(unittest.TestCase):
+    """Test case for bcrypt KDF."""
+
+    def setUp(self):
+        """Set up the test environment."""
+        self.test_file = "test_file.txt"
+        self.encrypted_file = "test_file.txt.encrypted"
+        self.decrypted_file = "test_file.txt.decrypted"
+        with open(self.test_file, "w") as f:
+            f.write("This is a test file for Thena_dev.py.")
+
+        # Configure Thena_dev to use bcrypt
+        Thena_dev.config['kdf_type'] = 'bcrypt'
+
+    def tearDown(self):
+        """Clean up the test environment."""
+        if os.path.exists(self.test_file):
+            os.remove(self.test_file)
+        if os.path.exists(self.encrypted_file):
+            os.remove(self.encrypted_file)
+        if os.path.exists(self.decrypted_file):
+            os.remove(self.decrypted_file)
+        if os.path.exists(".master_key_encrypted_v15"):
+            os.remove(".master_key_encrypted_v15")
+
+    def test_encrypt_decrypt_bcrypt(self):
+        """Test encryption and decryption of a file using bcrypt KDF."""
+        password = "Test_Password123!"
+        Thena_dev.encrypt_file_simple(self.test_file, self.encrypted_file, password)
+        Thena_dev.decrypt_file_simple(self.encrypted_file, self.decrypted_file, password)
         with open(self.decrypted_file, "r") as f:
             decrypted_content = f.read()
         with open(self.test_file, "r") as f:

@@ -1,42 +1,22 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Thena_dev_v14.py - ENCRYPTOR (v14 - Enhanced Security, Simplified Menu, Bug Fixed, Security Improved, Hardened, Improved Hardening, Advanced Hardening, Runtime Integrity, Anti-Debug, Secure Memory, Custom Format, Hardware Ready, PQ-Ready, Dynamic Format, Fully Hardened, Argon2 Enhanced, Secure Memory Overwrite Fixed, Advanced Hardening Implemented, Advanced KDF Parameters, Dynamic File Format, Runtime Data Integrity, Secure Memory Locking)
-Deskripsi: Versi ini meningkatkan tingkat keamanan inti secara drastis dengan fokus
-           pada pustaka 'cryptography' untuk KDF dan HKDF.
-           Menghapus dukungan ChaCha20-Poly1305 untuk saat ini demi kesederhanaan dan stabilitas.
-           Tetap menggunakan menu sederhana: Enkripsi, Dekripsi, Keluar.
-           Memperbaiki bug TypeError saat dekripsi.
-           Memperbaiki penggunaan nonce untuk AES-GCM agar lebih aman.
-           Memperbaiki typo dan referensi variabel.
-           Menambahkan hardening dan peningkatan keamanan lanjutan (V7-V13).
-           Menambahkan peningkatan hardening lanjutan (V14).
-           Menambahkan Advanced KDF Parameters.
-           Menambahkan Runtime Data Integrity Checks.
-           Menambahkan Secure Memory Locking (mlock).
-           Menambahkan Dynamic File Format (Shuffle, Encrypt Header, Variable Parts).
-           Menambahkan Secure Memory Overwrite (mlock & memset).
-           Tetap kuat dan aman untuk melindungi data Anda.
-Versi: 14
+Thena_dev_v15.py - ENCRYPTOR (v15 - Rich UI, bcrypt KDF, Enhanced Security, Simplified Menu, Bug Fixed, Security Improved, Hardened, Improved Hardening, Advanced Hardening, Runtime Integrity, Anti-Debug, Secure Memory, Custom Format, Hardware Ready, PQ-Ready, Dynamic Format, Fully Hardened, Argon2 Enhanced, Secure Memory Overwrite Fixed, Advanced Hardening Implemented, Advanced KDF Parameters, Dynamic File Format, Runtime Data Integrity, Secure Memory Locking)
+Deskripsi: Versi ini memperkenalkan antarmuka pengguna yang lebih kaya menggunakan 'rich',
+           menambahkan 'bcrypt' sebagai opsi Key Derivation Function (KDF) baru,
+           dan terus meningkatkan keamanan dan fungsionalitas.
+Versi: 15
 """
-# --- Kode Warna ANSI ---
-RESET = "\033[0m"
-BOLD = "\033[1m"
-UNDERLINE = "\033[4m"
-RED = "\033[31m"
-GREEN = "\033[32m"
-YELLOW = "\033[33m"
-BLUE = "\033[34m"
-MAGENTA = "\033[35m"
-CYAN = "\033[36m"
-WHITE = "\033[37m"
-BG_RED = "\033[41m"
-BG_GREEN = "\033[42m"
-BG_YELLOW = "\033[43m"
-BG_BLUE = "\033[44m"
-BG_MAGENTA = "\033[45m"
-BG_CYAN = "\033[46m"
-BG_WHITE = "\033[47m"
+# --- Impor Modul ---
+import bcrypt
+from rich.console import Console
+from rich.panel import Panel
+from rich.prompt import Prompt
+from rich.table import Table
+from rich.progress import Progress
+
+# --- Inisialisasi Rich Console ---
+console = Console()
 
 # --- Impor dari cryptography untuk semua KDF, HKDF, Fernet, dan Cipher ---
 try:
@@ -48,40 +28,38 @@ try:
     from cryptography.fernet import Fernet
     from cryptography.hazmat.primitives.ciphers.aead import AESGCM
     CRYPTOGRAPHY_AVAILABLE = True
-    print(f"{GREEN}✅ Modul 'cryptography' ditemukan. Fitur Lanjutan Tersedia.{RESET}")
+    console.print("✅ Modul 'cryptography' ditemukan. Fitur Lanjutan Tersedia.", style="green")
 except ImportError as e:
     CRYPTOGRAPHY_AVAILABLE = False
-    print(f"{RED}❌ Error mengimpor 'cryptography': {e}{RESET}")
-    print(f"{RED}❌ Modul 'cryptography' tidak ditemukan. Fitur Lanjutan Dinonaktifkan.{RESET}")
-    print(f"   Instal dengan: pip install cryptography")
+    console.print(f"❌ Error mengimpor 'cryptography': {e}", style="bold red")
+    console.print("❌ Modul 'cryptography' tidak ditemukan. Fitur Lanjutan Dinonaktifkan.", style="bold red")
+    console.print("   Instal dengan: pip install cryptography")
 
 # --- Impor dari pycryptodome (sebagai fallback untuk AES-GCM jika cryptography gagal) ---
-# Perbaikan V14: Definisikan PYCRYPTODOME_AVAILABLE di awal SEBELUM digunakan
-PYCRYPTODOME_AVAILABLE = False # Inisialisasi awal SELALU di sini
+PYCRYPTODOME_AVAILABLE = False
 if not CRYPTOGRAPHY_AVAILABLE:
     try:
         from Crypto.Cipher import AES
-        from Crypto.Random import get_random_bytes # Gunakan get_random_bytes dari pycryptodome jika tersedia
-        PYCRYPTODOME_AVAILABLE = True # Set ke True jika impor berhasil
-        print(f"{YELLOW}⚠️  Modul 'cryptography' tidak ditemukan. Menggunakan 'pycryptodome' sebagai fallback untuk AES-GCM.{RESET}")
+        from Crypto.Random import get_random_bytes
+        PYCRYPTODOME_AVAILABLE = True
+        console.print("⚠️  Modul 'cryptography' tidak ditemukan. Menggunakan 'pycryptodome' sebagai fallback untuk AES-GCM.", style="yellow")
     except ImportError:
-        PYCRYPTODOME_AVAILABLE = False # Pastikan tetap False jika impor gagal
-        print(f"{RED}❌ Modul 'pycryptodome' juga tidak ditemukan.{RESET}")
-        print(f"   Instal: pip install pycryptodome")
-        import sys # Impor sys di sini jika gagal
+        PYCRYPTODOME_AVAILABLE = False
+        console.print("❌ Modul 'pycryptodome' juga tidak ditemukan.", style="bold red")
+        console.print("   Instal: pip install pycryptodome")
+        import sys
         sys.exit(1)
 
 # --- Impor dari argon2 (PasswordHasher untuk fallback jika cryptography Argon2 tidak tersedia) ---
-# Kita tetap impor low_level untuk menghindari error di fungsi derivasi
 try:
     from argon2 import PasswordHasher
     from argon2.low_level import hash_secret_raw, Type
     from argon2.exceptions import VerifyMismatchError
     ARGON2_AVAILABLE = True
-    print(f"{GREEN}✅ Modul 'argon2' ditemukan.{RESET}")
+    console.print("✅ Modul 'argon2' ditemukan.", style="green")
 except ImportError:
     ARGON2_AVAILABLE = False
-    print(f"{RED}❌ Modul 'argon2' tidak ditemukan. Argon2 tidak tersedia.{RESET}")
+    console.print("❌ Modul 'argon2' tidak ditemukan. Argon2 tidak tersedia.", style="bold red")
 
 # --- Impor lainnya ---
 from pathlib import Path
@@ -110,8 +88,8 @@ import mmap # Impor mmap untuk performa/file besar (V12/V13/V14)
 import struct # Impor struct untuk header dinamis (V12/V13/V14)
 
 # --- Nama File Konfigurasi dan Log ---
-CONFIG_FILE = "thena_config_v14.json"
-LOG_FILE = "thena_encryptor_v14.log"
+CONFIG_FILE = "thena_config_v15.json"
+LOG_FILE = "thena_encryptor_v15.log"
 
 # --- Variabel Global untuk Hardening V10/V11/V12/V13/V14 ---
 integrity_hashes = {} # Dict untuk menyimpan hash fungsi
@@ -129,6 +107,7 @@ def cleanup_temp_files():
     This function iterates over the global `temp_files_created` set and attempts to delete each file.
     It logs the result of each deletion attempt.
     """
+    logger = logging.getLogger(__name__)
     for temp_file in temp_files_created:
         try:
             os.unlink(temp_file)
@@ -324,7 +303,7 @@ def detect_debugging():
         if method_func and callable(method_func):
             if method_func():
                 logger.critical("Anti-Debug: Lingkungan debugging terdeteksi!")
-                print(f"\n{RED}❌ CRITICAL: Lingkungan debugging terdeteksi! Program dihentikan.{RESET}")
+                console.print("\n[bold red]❌ CRITICAL: Lingkungan debugging terdeteksi! Program dihentikan.[/bold red]")
                 os.kill(os.getpid(), signal.SIGTERM) # Matikan proses secara paksa
                 return True
     return False
@@ -559,20 +538,21 @@ def load_config():
     Returns:
         dict: A dictionary containing the configuration settings.
     """
-    # Nilai default ditingkatkan untuk keamanan dan fungsionalitas V14
+    # Nilai default untuk V15
     default_config = {
-        "kdf_type": "argon2id", # Pilihan KDF: "argon2id", "scrypt", "pbkdf2" (menggunakan cryptography jika tersedia)
-        "encryption_algorithm": "aes-gcm", # Pilihan Algoritma: hanya AES-GCM untuk saat ini (untuk kesederhanaan)
-        "argon2_time_cost": 25, # V14: Ditingkatkan
-        "argon2_memory_cost": 2**21, # V14: Ditingkatkan (2048MB)
-        "argon2_parallelism": 4, # V14: Ditingkatkan
-        "scrypt_n": 2**21, # V14: Ditingkatkan
+        "kdf_type": "argon2id", # Pilihan KDF: "argon2id", "scrypt", "pbkdf2", "bcrypt"
+        "encryption_algorithm": "aes-gcm",
+        "argon2_time_cost": 25,
+        "argon2_memory_cost": 2**21,
+        "argon2_parallelism": 4,
+        "scrypt_n": 2**21,
         "scrypt_r": 8,
         "scrypt_p": 1,
-        "pbkdf2_iterations": 200000, # V14: Ditingkatkan
-        "pbkdf2_hash_algorithm": "sha256", # Algoritma hash untuk PBKDF2
+        "pbkdf2_iterations": 200000,
+        "pbkdf2_hash_algorithm": "sha256",
+        "bcrypt_rounds": 12,
         "chunk_size": 64 * 1024,
-        "master_key_file": ".master_key_encrypted_v14", # Ubah nama file master key
+        "master_key_file": ".master_key_encrypted_v15",
         "padding_size_length": 4,
         "checksum_length": 32,
         "master_key_salt_len": 16,
@@ -631,18 +611,18 @@ def load_config():
             for key, value in default_config.items():
                 if key not in config:
                     config[key] = value
-            print(f"{CYAN}Konfigurasi V14 dimuat dari {CONFIG_FILE}{RESET}")
+            console.print(f"Konfigurasi V15 dimuat dari {CONFIG_FILE}", style="cyan")
         except json.JSONDecodeError:
-            print(f"{RED}Error membaca {CONFIG_FILE}, menggunakan nilai default V14.{RESET}")
+            console.print(f"Error membaca {CONFIG_FILE}, menggunakan nilai default V15.", style="bold red")
             config = default_config
     else:
         config = default_config
         try:
             with open(config_path, 'w') as f:
                 json.dump(config, f, indent=4)
-            print(f"{CYAN}File konfigurasi default V14 '{CONFIG_FILE}' dibuat.{RESET}")
+            console.print(f"File konfigurasi default V15 '{CONFIG_FILE}' dibuat.", style="cyan")
         except IOError:
-            print(f"{RED}Gagal membuat file konfigurasi V14 '{CONFIG_FILE}'. Menggunakan nilai default.{RESET}")
+            console.print(f"Gagal membuat file konfigurasi V15 '{CONFIG_FILE}'. Menggunakan nilai default.", style="bold red")
             config = default_config
     return config
 
@@ -716,12 +696,12 @@ def secure_wipe_file(file_path: str, passes: int = 5):
         passes (int, optional): The number of times to overwrite the file. Defaults to 5.
     """
     if not os.path.exists(file_path):
-        print(f"{YELLOW}⚠️  File '{file_path}' tidak ditemukan, dilewati.{RESET}")
+        console.print(f"⚠️  File '{file_path}' tidak ditemukan, dilewati.", style="yellow")
         logger.warning(f"File '{file_path}' tidak ditemukan saat secure wipe.")
         return
 
     file_size = os.path.getsize(file_path)
-    print(f"{CYAN}Menghapus secara aman '{file_path}'...{RESET}")
+    console.print(f"Menghapus secara aman '{file_path}'...", style="cyan")
     with open(file_path, "r+b") as f:
         for i in range(passes): # Perbaikan: ganti 'passs' menjadi 'passes'
             f.seek(0)
@@ -734,7 +714,7 @@ def secure_wipe_file(file_path: str, passes: int = 5):
             f.flush()
             os.fsync(f.fileno())
     os.remove(file_path)
-    print(f"{GREEN}✅ File '{file_path}' telah dihapus secara aman ({passes} passes).{RESET}")
+    console.print(f"✅ File '{file_path}' telah dihapus secara aman ({passes} passes).", style="green")
     logger.info(f"File '{file_path}' dihapus secara aman ({passes} passes).")
 
 def confirm_overwrite(file_path: str) -> bool:
@@ -748,9 +728,9 @@ def confirm_overwrite(file_path: str) -> bool:
         bool: True if the user confirms, False otherwise.
     """
     if os.path.exists(file_path):
-        confirm = input(f"{YELLOW}File '{file_path}' sudah ada. Ganti? (y/N): {RESET}").strip().lower()
+        confirm = Prompt.ask(f"[yellow]File '{file_path}' sudah ada. Ganti? (y/N):[/yellow]").strip().lower()
         if confirm not in ['y', 'yes']:
-            print(f"{YELLOW}Operasi dibatalkan.{RESET}")
+            console.print("Operasi dibatalkan.", style="yellow")
             logger.info(f"Operasi dibatalkan karena file '{file_path}' sudah ada.")
             return False
     return True
@@ -780,15 +760,15 @@ def check_disk_space(file_path: str, output_dir: str) -> bool:
         if free_space < estimated_output_size:
             required_mb = estimated_output_size / (1024*1024)
             free_mb = free_space / (1024*1024)
-            print(f"{RED}❌ Error: Ruang disk tidak cukup.{RESET}")
-            print(f"   Dibutuhkan sekitar {required_mb:.2f} MB, tersedia {free_mb:.2f} MB di '{output_dir}'.")
+            console.print("❌ Error: Ruang disk tidak cukup.", style="bold red")
+            console.print(f"   Dibutuhkan sekitar {required_mb:.2f} MB, tersedia {free_mb:.2f} MB di '{output_dir}'.")
             logger.error(f"Ruang disk tidak cukup untuk '{file_path}'. Dibutuhkan {estimated_output_size} bytes, tersedia {free_space} bytes di '{output_dir}'.")
             return False
         else:
             logger.info(f"Ruang disk cukup. File '{file_path}' ({file_size} bytes) akan menghasilkan sekitar {estimated_output_size} bytes di '{output_dir}'.")
             return True
     except OSError as e:
-        print(f"{RED}❌ Error saat memeriksa ruang disk: {e}{RESET}")
+        console.print(f"❌ Error saat memeriksa ruang disk: {e}", style="bold red")
         logger.error(f"Error saat memeriksa ruang disk untuk '{file_path}' di '{output_dir}': {e}")
         return False
 
@@ -840,13 +820,13 @@ def validate_password_keyfile(password: str, keyfile_path: str) -> bool:
                 logger.warning(f"Tidak bisa membaca izin file keyfile '{keyfile_path}'.")
 
     if issues:
-        print(f"{YELLOW}⚠️  Peringatan Validasi:{RESET}")
+        console.print("⚠️  Peringatan Validasi:", style="yellow")
         for issue in issues:
-            print(f"   - {issue}")
+            console.print(f"   - {issue}")
         logger.warning(f"Peringatan validasi untuk input: {', '.join(issues)}")
-        confirm = input(f"{YELLOW}Lanjutkan proses? (y/N): {RESET}").strip().lower()
+        confirm = Prompt.ask("[yellow]Lanjutkan proses? (y/N):[/yellow]").strip().lower()
         if confirm not in ['y', 'yes']:
-            print(f"{YELLOW}Operasi dibatalkan.{RESET}")
+            console.print("Operasi dibatalkan.", style="yellow")
             logger.info("Operasi dibatalkan berdasarkan validasi input pengguna.")
             return False
     else:
@@ -867,7 +847,7 @@ def check_file_size_limit(file_path: str) -> bool:
     max_size = config.get("max_file_size", 100 * 1024 * 1024) # 100MB default
     file_size = os.path.getsize(file_path)
     if file_size > max_size:
-        print(f"{RED}❌ Error: Ukuran file '{file_path}' ({file_size} bytes) melebihi batas maksimal ({max_size} bytes).{RESET}")
+        console.print(f"❌ Error: Ukuran file '{file_path}' ({file_size} bytes) melebihi batas maksimal ({max_size} bytes).", style="bold red")
         logger.error(f"File '{file_path}' ({file_size} bytes) melebihi batas maksimal ({max_size} bytes).")
         return False
     logger.debug(f"File '{file_path}' ({file_size} bytes) berada dalam batas ukuran maksimal ({max_size} bytes).")
@@ -944,7 +924,7 @@ def derive_key_from_password_and_keyfile_pbkdf2(password: str, salt: bytes, keyf
         bytes: The derived key, or None if an error occurs.
     """
     if not CRYPTOGRAPHY_AVAILABLE:
-        print(f"{RED}❌ Error: PBKDF2 memerlukan modul 'cryptography'.{RESET}")
+        console.print("❌ Error: PBKDF2 memerlukan modul 'cryptography'.", style="bold red")
         logger.error("PBKDF2 memerlukan modul 'cryptography', yang tidak tersedia.")
         return None
 
@@ -952,7 +932,7 @@ def derive_key_from_password_and_keyfile_pbkdf2(password: str, salt: bytes, keyf
     keyfile_bytes = b""
     if keyfile_path:
         if not os.path.isfile(keyfile_path):
-            print(f"{RED}❌ Error: Keyfile '{keyfile_path}' tidak ditemukan.{RESET}")
+            console.print(f"❌ Error: Keyfile '{keyfile_path}' tidak ditemukan.", style="bold red")
             logger.error(f"File keyfile '{keyfile_path}' tidak ditemukan saat derivasi kunci (PBKDF2).")
             return None
         with open(keyfile_path, 'rb') as kf:
@@ -964,7 +944,7 @@ def derive_key_from_password_and_keyfile_pbkdf2(password: str, salt: bytes, keyf
     if hash_algorithm_name.lower() == "sha256":
         hash_algorithm = hashes.SHA256()
     else:
-        print(f"{RED}❌ Error: Algoritma hash PBKDF2 '{hash_algorithm_name}' tidak didukung.{RESET}")
+        console.print(f"❌ Error: Algoritma hash PBKDF2 '{hash_algorithm_name}' tidak didukung.", style="bold red")
         logger.error(f"Algoritma hash PBKDF2 '{hash_algorithm_name}' tidak didukung.")
         return None
 
@@ -995,7 +975,7 @@ def derive_key_from_password_and_keyfile_scrypt(password: str, salt: bytes, keyf
         bytes: The derived key, or None if an error occurs.
     """
     if not CRYPTOGRAPHY_AVAILABLE:
-        print(f"{RED}❌ Error: Scrypt memerlukan modul 'cryptography'.{RESET}")
+        console.print("❌ Error: Scrypt memerlukan modul 'cryptography'.", style="bold red")
         logger.error("Scrypt memerlukan modul 'cryptography', yang tidak tersedia.")
         return None
 
@@ -1003,7 +983,7 @@ def derive_key_from_password_and_keyfile_scrypt(password: str, salt: bytes, keyf
     keyfile_bytes = b""
     if keyfile_path:
         if not os.path.isfile(keyfile_path):
-            print(f"{RED}❌ Error: Keyfile '{keyfile_path}' tidak ditemukan.{RESET}")
+            console.print(f"❌ Error: Keyfile '{keyfile_path}' tidak ditemukan.", style="bold red")
             logger.error(f"File keyfile '{keyfile_path}' tidak ditemukan saat derivasi kunci (Scrypt).")
             return None
         with open(keyfile_path, 'rb') as kf:
@@ -1040,7 +1020,7 @@ def derive_key_from_password_and_keyfile_argon2(password: str, salt: bytes, keyf
     """
     # Kita tetap gunakan argon2.low_level karena lebih stabil dan tidak memerlukan cryptography untuk Argon2 sendiri
     if not ARGON2_AVAILABLE:
-        print(f"{RED}❌ Error: Argon2 tidak tersedia.{RESET}")
+        console.print("❌ Error: Argon2 tidak tersedia.", style="bold red")
         logger.error("Argon2 tidak tersedia.")
         return None
         
@@ -1048,7 +1028,7 @@ def derive_key_from_password_and_keyfile_argon2(password: str, salt: bytes, keyf
     keyfile_bytes = b""
     if keyfile_path:
         if not os.path.isfile(keyfile_path):
-            print(f"{RED}❌ Error: Keyfile '{keyfile_path}' tidak ditemukan.{RESET}")
+            console.print(f"❌ Error: Keyfile '{keyfile_path}' tidak ditemukan.", style="bold red")
             logger.error(f"File keyfile '{keyfile_path}' tidak ditemukan saat derivasi kunci (Argon2 low_level).")
             return None
         with open(keyfile_path, 'rb') as kf:
@@ -1072,6 +1052,43 @@ def derive_key_from_password_and_keyfile_argon2(password: str, salt: bytes, keyf
         logger.error(f"Kesalahan saat hashing dengan Argon2id (argon2.low_level): {e}")
         return None
 
+def derive_key_from_password_and_keyfile_bcrypt(password: str, salt: bytes, keyfile_path: str = None) -> bytes:
+    """
+    Derives a key from a password and keyfile using bcrypt.
+
+    Args:
+        password (str): The password.
+        salt (bytes): The salt.
+        keyfile_path (str, optional): The path to the keyfile. Defaults to None.
+
+    Returns:
+        bytes: The derived key, or None if an error occurs.
+    """
+    password_bytes = password.encode('utf-8')
+    keyfile_bytes = b""
+    if keyfile_path:
+        if not os.path.isfile(keyfile_path):
+            console.print(f"❌ Error: Keyfile '{keyfile_path}' tidak ditemukan.", style="bold red")
+            logger.error(f"File keyfile '{keyfile_path}' tidak ditemukan saat derivasi kunci (bcrypt).")
+            return None
+        with open(keyfile_path, 'rb') as kf:
+            keyfile_bytes = kf.read()
+
+    combined_input = hashlib.sha256(password_bytes + keyfile_bytes).digest()
+
+    try:
+        derived_key = bcrypt.kdf(
+            password=combined_input,
+            salt=salt,
+            desired_key_bytes=config["file_key_length"],
+            rounds=config["bcrypt_rounds"]
+        )
+        logger.debug(f"Kunci berhasil diturunkan dengan bcrypt, Panjang: {len(derived_key)} bytes")
+        return derived_key
+    except Exception as e:
+        logger.error(f"Kesalahan saat hashing dengan bcrypt: {e}")
+        return None
+
 def derive_key_from_password_and_keyfile(password: str, salt: bytes, keyfile_path: str = None) -> bytes:
     """
     Derives a key from a password and keyfile using the configured KDF.
@@ -1090,7 +1107,7 @@ def derive_key_from_password_and_keyfile(password: str, salt: bytes, keyfile_pat
         if CRYPTOGRAPHY_AVAILABLE:
             return derive_key_from_password_and_keyfile_pbkdf2(password, salt, keyfile_path)
         else:
-            print(f"{RED}❌ Error: KDF '{kdf_type}' memerlukan modul 'cryptography'.{RESET}")
+            console.print(f"❌ Error: KDF '{kdf_type}' memerlukan modul 'cryptography'.", style="bold red")
             logger.error(f"KDF '{kdf_type}' memerlukan modul 'cryptography', yang tidak tersedia.")
             return None
 
@@ -1098,7 +1115,7 @@ def derive_key_from_password_and_keyfile(password: str, salt: bytes, keyfile_pat
         if CRYPTOGRAPHY_AVAILABLE:
             return derive_key_from_password_and_keyfile_scrypt(password, salt, keyfile_path)
         else:
-            print(f"{RED}❌ Error: KDF '{kdf_type}' memerlukan modul 'cryptography'.{RESET}")
+            console.print(f"❌ Error: KDF '{kdf_type}' memerlukan modul 'cryptography'.", style="bold red")
             logger.error(f"KDF '{kdf_type}' memerlukan modul 'cryptography', yang tidak tersedia.")
             return None
 
@@ -1106,8 +1123,11 @@ def derive_key_from_password_and_keyfile(password: str, salt: bytes, keyfile_pat
         # Gunakan argon2.low_level
         return derive_key_from_password_and_keyfile_argon2(password, salt, keyfile_path)
 
+    elif kdf_type == "bcrypt":
+        return derive_key_from_password_and_keyfile_bcrypt(password, salt, keyfile_path)
+
     else:
-        print(f"{RED}❌ Error: Tipe KDF '{kdf_type}' tidak dikenal. Gunakan 'argon2id', 'scrypt', atau 'pbkdf2'.{RESET}")
+        console.print(f"❌ Error: Tipe KDF '{kdf_type}' tidak dikenal. Gunakan 'argon2id', 'scrypt', 'pbkdf2', atau 'bcrypt'.", style="bold red")
         logger.error(f"Tipe KDF '{kdf_type}' tidak dikenal.")
         return None
 
@@ -1124,7 +1144,7 @@ def derive_file_key_from_master_key(master_key: bytes, input_file_path: str) -> 
         bytes: The derived file key, or a random key if an error occurs.
     """
     if not CRYPTOGRAPHY_AVAILABLE:
-        print(f"{RED}❌ Error: HKDF memerlukan modul 'cryptography'.{RESET}")
+        console.print("❌ Error: HKDF memerlukan modul 'cryptography'.", style="bold red")
         logger.error("HKDF memerlukan modul 'cryptography', yang tidak tersedia.")
         return secrets.token_bytes(config["file_key_length"]) # Fallback ke acak jika tidak tersedia
 
@@ -1163,7 +1183,7 @@ def derive_hmac_key_from_master_key(master_key: bytes, input_file_path: str) -> 
         bytes: The derived HMAC key, or a random key if an error occurs.
     """
     if not CRYPTOGRAPHY_AVAILABLE:
-        print(f"{RED}❌ Error: HKDF (untuk HMAC) memerlukan modul 'cryptography'.{RESET}")
+        console.print("❌ Error: HKDF (untuk HMAC) memerlukan modul 'cryptography'.", style="bold red")
         logger.error("HKDF (untuk HMAC) memerlukan modul 'cryptography', yang tidak tersedia.")
         return secrets.token_bytes(config["hmac_key_length"]) # Fallback ke acak jika tidak tersedia
 
@@ -1203,12 +1223,12 @@ def load_or_create_master_key(password: str, keyfile_path: str):
     """
     master_key = None
     if os.path.exists(config["master_key_file"]):
-        print(f"{CYAN}Memuat Master Key dari '{config['master_key_file']}'...{RESET}")
+        console.print(f"Memuat Master Key dari '{config['master_key_file']}'...", style="cyan")
         try:
             with open(config["master_key_file"], 'rb') as f:
                 salt = f.read(config["master_key_salt_len"])
                 if len(salt) != config["master_key_salt_len"]:
-                    print(f"{RED}❌ Error: File Master Key rusak (salt tidak valid).{RESET}")
+                    console.print("❌ Error: File Master Key rusak (salt tidak valid).", style="bold red")
                     logger.error("File Master Key rusak (salt tidak valid).")
                     return None
                 encrypted_master_key_data = f.read()
@@ -1220,18 +1240,18 @@ def load_or_create_master_key(password: str, keyfile_path: str):
                 fernet = Fernet(fernet_key)
                 try:
                     master_key = fernet.decrypt(encrypted_master_key_data)
-                    print(f"{GREEN}✅ Master Key berhasil dimuat.{RESET}")
+                    console.print("✅ Master Key berhasil dimuat.", style="green")
                     logger.info("Master Key berhasil dimuat dari file.")
                 except Exception as e:
-                    print(f"{RED}❌ Error: Gagal mendekripsi Master Key. Password/Keyfile mungkin salah.{RESET}")
+                    console.print("❌ Error: Gagal mendekripsi Master Key. Password/Keyfile mungkin salah.", style="bold red")
                     logger.error(f"Gagal mendekripsi Master Key: {e}")
                     return None
         except FileNotFoundError:
-            print(f"{RED}❌ Error: File Master Key '{config['master_key_file']}' tidak ditemukan.{RESET}")
+            console.print(f"❌ Error: File Master Key '{config['master_key_file']}' tidak ditemukan.", style="bold red")
             logger.error(f"File Master Key '{config['master_key_file']}' tidak ditemukan.")
             return None
     else:
-        print(f"{YELLOW}File Master Key '{config['master_key_file']}' tidak ditemukan. Membuat yang baru...{RESET}")
+        console.print(f"File Master Key '{config['master_key_file']}' tidak ditemukan. Membuat yang baru...", style="yellow")
         master_key = secrets.token_bytes(config["file_key_length"]) # Buat Master Key acak
         salt = secrets.token_bytes(config["master_key_salt_len"]) # Buat salt acak untuk enkripsi Fernet
         fernet_key_bytes = derive_key_from_password_and_keyfile(password, salt, keyfile_path)
@@ -1244,7 +1264,7 @@ def load_or_create_master_key(password: str, keyfile_path: str):
         with open(config["master_key_file"], 'wb') as f:
             f.write(salt) # Tulis salt dulu
             f.write(encrypted_master_key_data) # Lalu data terenkripsi
-        print(f"{GREEN}✅ Master Key baru berhasil dibuat dan disimpan.{RESET}")
+        console.print("✅ Master Key baru berhasil dibuat dan disimpan.", style="green")
         logger.info("Master Key baru berhasil dibuat dan disimpan.")
 
     return master_key
@@ -1310,17 +1330,17 @@ def encrypt_file_simple(input_path: str, output_path: str, password: str, keyfil
     output_dir = os.path.dirname(output_path) or "."
 
     if not os.path.isfile(input_path):
-        print(f"{RED}❌ Error: File input '{input_path}' tidak ditemukan.{RESET}")
+        console.print(f"❌ Error: File input '{input_path}' tidak ditemukan.", style="bold red")
         logger.error(f"File input '{input_path}' tidak ditemukan.")
         return False, None
 
     if not os.access(input_path, os.R_OK):
-        print(f"{RED}❌ Error: File input '{input_path}' tidak dapat dibaca.{RESET}")
+        console.print(f"❌ Error: File input '{input_path}' tidak dapat dibaca.", style="bold red")
         logger.error(f"File input '{input_path}' tidak dapat dibaca (izin akses).")
         return False, None
 
     if os.path.getsize(input_path) == 0:
-        print(f"{RED}❌ Error: File input '{input_path}' kosong.{RESET}")
+        console.print(f"❌ Error: File input '{input_path}' kosong.", style="bold red")
         logger.error(f"File input '{input_path}' kosong.")
         return False, None
 
@@ -1329,10 +1349,10 @@ def encrypt_file_simple(input_path: str, output_path: str, password: str, keyfil
 
     # Validasi ekstensi output sederhana
     if not output_path.endswith('.encrypted'):
-        print(f"{YELLOW}⚠️  Peringatan: Nama file output '{output_path}' tidak memiliki ekstensi '.encrypted'.{RESET}")
-        confirm = input(f"{YELLOW}Lanjutkan dengan nama ini? (y/N): {RESET}").strip().lower()
+        console.print(f"⚠️  Peringatan: Nama file output '{output_path}' tidak memiliki ekstensi '.encrypted'.", style="yellow")
+        confirm = Prompt.ask("[yellow]Lanjutkan dengan nama ini? (y/N):[/yellow]").strip().lower()
         if confirm not in ['y', 'yes']:
-            print(f"{YELLOW}Operasi dibatalkan.{RESET}")
+            console.print("Operasi dibatalkan.", style="yellow")
             logger.info("Operasi dibatalkan karena nama output tidak memiliki ekstensi '.encrypted'.")
             return False, None
 
@@ -1341,10 +1361,10 @@ def encrypt_file_simple(input_path: str, output_path: str, password: str, keyfil
 
     try:
         if hide_paths:
-            print(f"\n{CYAN}[ Encrypting... ]{RESET}")
+            console.print("\n[cyan][ Encrypting... ][/cyan]")
             logger.info(f"Memulai enkripsi file (simple) di direktori: {output_dir}")
         else:
-            print(f"\n{CYAN}[ Encrypting (Simple Mode)... ]{RESET}")
+            console.print("\n[cyan][ Encrypting (Simple Mode)... ][/cyan]")
             logger.info(f"Memulai enkripsi file (simple): {input_path}")
 
         input_size = os.path.getsize(input_path)
@@ -1369,7 +1389,7 @@ def encrypt_file_simple(input_path: str, output_path: str, password: str, keyfil
         # --- V12/V13/V14: Gunakan mmap jika file besar dan diaktifkan ---
         large_file_threshold = config.get("large_file_threshold", 10 * 1024 * 1024) # 10MB default
         if config.get("use_mmap_for_large_files", False) and input_size > large_file_threshold:
-            print(f"{CYAN}Menggunakan mmap untuk membaca file besar...{RESET}")
+            console.print("Menggunakan mmap untuk membaca file besar...", style="cyan")
             with open(input_path, 'rb') as infile:
                 with mmap.mmap(infile.fileno(), 0, access=mmap.ACCESS_READ) as mmapped_file:
                     plaintext_data = mmapped_file[:]
@@ -1419,12 +1439,12 @@ def encrypt_file_simple(input_path: str, output_path: str, password: str, keyfil
                 cipher = AES.new(key, AES.MODE_GCM, nonce=nonce)
                 ciphertext, tag = cipher.encrypt_and_digest(data)
             else:
-                print(f"{RED}❌ Error: Tidak ada pustaka tersedia untuk algoritma '{algo}'.{RESET}")
+                console.print(f"❌ Error: Tidak ada pustaka tersedia untuk algoritma '{algo}'.", style="bold red")
                 logger.error(f"Tidak ada pustaka tersedia untuk algoritma '{algo}'.")
                 return False, None
         else:
-            print(f"{RED}❌ Error: Algoritma enkripsi '{algo}' tidak dikenal atau tidak didukung di v14 ini.{RESET}")
-            logger.error(f"Algoritma enkripsi '{algo}' tidak dikenal atau tidak didukung di v14 ini.")
+            console.print(f"❌ Error: Algoritma enkripsi '{algo}' tidak dikenal atau tidak didukung di v15 ini.", style="bold red")
+            logger.error(f"Algoritma enkripsi '{algo}' tidak dikenal atau tidak didukung di v15 ini.")
             return False, None
 
         # --- V8: Tambahkan HMAC untuk verifikasi tambahan (Fixed HMAC Derivation - V14: Konsisten & Lebih Aman) ---
@@ -1432,7 +1452,7 @@ def encrypt_file_simple(input_path: str, output_path: str, password: str, keyfil
         # V14: Gunakan path file input untuk derivasi HMAC key dari Master Key
         hmac_key = derive_key_from_password_and_keyfile(password, salt, keyfile_path)
         if hmac_key is None:
-             print(f"{RED}❌ Error: Gagal menurunkan kunci HMAC.{RESET}")
+             console.print("❌ Error: Gagal menurunkan kunci HMAC.", style="bold red")
              logger.error(f"Gagal menurunkan kunci HMAC untuk {input_path}")
              return False, None
         hmac_obj = hmac.new(hmac_key, original_checksum, hashlib.sha256)
@@ -1513,7 +1533,7 @@ def encrypt_file_simple(input_path: str, output_path: str, password: str, keyfil
 
         # --- V8: Verifikasi Integritas Output ---
         if config.get("verify_output_integrity", True):
-            print(f"{CYAN}Memverifikasi integritas file output...{RESET}")
+            console.print("Memverifikasi integritas file output...", style="cyan")
             try:
                 with open(output_path, 'rb') as f:
                     file_content = f.read()
@@ -1523,13 +1543,13 @@ def encrypt_file_simple(input_path: str, output_path: str, password: str, keyfil
                 # Atau, kita bisa enkripsi ulang file input dan bandingkan outputnya (lebih berat).
                 # Untuk saat ini, kita hanya memastikan file output bisa dibaca dan ukurannya sesuai.
                 if os.path.getsize(output_path) != output_size:
-                    print(f"{RED}❌ Error: Ukuran file output tidak sesuai setelah verifikasi.{RESET}")
+                    console.print("❌ Error: Ukuran file output tidak sesuai setelah verifikasi.", style="bold red")
                     logger.error(f"Verifikasi integritas output gagal: ukuran tidak cocok untuk {output_path}")
                     return False, None
-                print(f"{GREEN}✅ Verifikasi integritas output berhasil.{RESET}")
+                console.print("✅ Verifikasi integritas output berhasil.", style="green")
                 logger.info(f"Verifikasi integritas output berhasil untuk {output_path}")
             except Exception as e:
-                print(f"{RED}❌ Error saat memverifikasi integritas output: {e}{RESET}")
+                console.print(f"❌ Error saat memverifikasi integritas output: {e}", style="bold red")
                 logger.error(f"Verifikasi integritas output gagal untuk {output_path}: {e}")
                 return False, None
 
@@ -1549,28 +1569,28 @@ def encrypt_file_simple(input_path: str, output_path: str, password: str, keyfil
             # Variabel lain yang sensitif bisa ditambahkan di sini
 
         if hide_paths:
-            print(f"{GREEN}✅ File berhasil dienkripsi.{RESET}")
+            console.print("✅ File berhasil dienkripsi.", style="green")
             logger.info(f"Enkripsi (simple) berhasil ke file di direktori: {output_dir}")
         else:
-            print(f"{GREEN}✅ File '{input_path}' berhasil dienkripsi ke '{output_path}' (Simple Mode).{RESET}")
+            console.print(f"✅ File '{input_path}' berhasil dienkripsi ke '{output_path}' (Simple Mode).", style="green")
             logger.info(f"Enkripsi (simple) berhasil: {input_path} -> {output_path}")
 
         return True, output_path
 
     except FileNotFoundError:
         if hide_paths:
-            print(f"{RED}❌ Error: File input tidak ditemukan.{RESET}")
+            console.print("❌ Error: File input tidak ditemukan.", style="bold red")
             logger.error(f"File input tidak ditemukan saat enkripsi (simple) di direktori: {output_dir}")
         else:
-            print(f"{RED}❌ Error: File '{input_path}' tidak ditemukan.{RESET}") # Perbaikan: gunakan input_path
+            console.print(f"❌ Error: File '{input_path}' tidak ditemukan.", style="bold red") # Perbaikan: gunakan input_path
             logger.error(f"File '{input_path}' tidak ditemukan saat enkripsi (simple).") # Perbaikan: gunakan input_path
         return False, None
     except Exception as e:
         if hide_paths:
-            print(f"{RED}❌ Error saat mengenkripsi file: {e}{RESET}")
+            console.print(f"❌ Error saat mengenkripsi file: {e}", style="bold red")
             logger.error(f"Error saat mengenkripsi (simple) di direktori '{output_dir}': {e}")
         else:
-            print(f"{RED}❌ Error saat mengenkripsi file (simple): {e}{RESET}")
+            console.print(f"❌ Error saat mengenkripsi file (simple): {e}", style="bold red")
             logger.error(f"Error saat mengenkripsi (simple) {input_path}: {e}") # Perbaikan: gunakan input_path
         return False, None
 
@@ -1592,36 +1612,36 @@ def decrypt_file_simple(input_path: str, output_path: str, password: str, keyfil
     start_time = time.time()
 
     if not os.path.isfile(input_path):
-        print(f"{RED}❌ Error: File input '{input_path}' tidak ditemukan.{RESET}")
+        console.print(f"❌ Error: File input '{input_path}' tidak ditemukan.", style="bold red")
         logger.error(f"File input '{input_path}' tidak ditemukan.")
         return False, None
 
     if not os.access(input_path, os.R_OK):
-        print(f"{RED}❌ Error: File input '{input_path}' tidak dapat dibaca.{RESET}")
+        console.print(f"❌ Error: File input '{input_path}' tidak dapat dibaca.", style="bold red")
         logger.error(f"File input '{input_path}' tidak dapat dibaca (izin akses).")
         return False, None
 
     if os.path.getsize(input_path) == 0:
-        print(f"{RED}❌ Error: File input '{input_path}' kosong.{RESET}")
+        console.print(f"❌ Error: File input '{input_path}' kosong.", style="bold red")
         logger.error(f"File input '{input_path}' kosong.")
         return False, None
 
     # Validasi ekstensi input sederhana
     if not input_path.endswith('.encrypted'):
-        print(f"{YELLOW}⚠️  Peringatan: File input '{input_path}' tidak memiliki ekstensi '.encrypted'.{RESET}")
-        confirm = input(f"{YELLOW}Apakah ini file terenkripsi Thena_dev? (y/N): {RESET}").strip().lower()
+        console.print(f"⚠️  Peringatan: File input '{input_path}' tidak memiliki ekstensi '.encrypted'.", style="yellow")
+        confirm = Prompt.ask("[yellow]Apakah ini file terenkripsi Thena_dev? (y/N):[/yellow]").strip().lower()
         if confirm not in ['y', 'yes']:
-            print(f"{YELLOW}Operasi dibatalkan.{RESET}")
+            console.print("Operasi dibatalkan.", style="yellow")
             logger.info("Operasi dibatalkan karena ekstensi input '.encrypted' tidak ditemukan.")
             return False, None
 
     try:
         if hide_paths:
-            print(f"\n{CYAN}[ Decrypting... ]{RESET}")
+            console.print("\n[cyan][ Decrypting... ][/cyan]")
             output_dir = os.path.dirname(output_path) or "."
             logger.info(f"Memulai dekripsi file (simple) ke direktori: {output_dir}")
         else:
-            print(f"\n{CYAN}[ Decrypting (Simple Mode)... ]{RESET}")
+            console.print("\n[cyan][ Decrypting (Simple Mode)... ][/cyan]")
             logger.info(f"Memulai dekripsi file (simple): {input_path}")
 
         output_dir = os.path.dirname(output_path) or "."
@@ -1633,8 +1653,8 @@ def decrypt_file_simple(input_path: str, output_path: str, password: str, keyfil
         if free_space < estimated_output_size:
             required_mb = estimated_output_size / (1024*1024)
             free_mb = free_space / (1024*1024)
-            print(f"{RED}❌ Error: Ruang disk tidak cukup.{RESET}")
-            print(f"   Dibutuhkan sekitar {required_mb:.2f} MB, tersedia {free_mb:.2f} MB di '{output_dir}'.")
+            console.print("❌ Error: Ruang disk tidak cukup.", style="bold red")
+            console.print(f"   Dibutuhkan sekitar {required_mb:.2f} MB, tersedia {free_mb:.2f} MB di '{output_dir}'.")
             logger.error(f"Ruang disk tidak cukup untuk '{input_path}'. Dibutuhkan {estimated_output_size} bytes, tersedia {free_space} bytes di '{output_dir}'.")
             return False, None
 
@@ -1663,7 +1683,7 @@ def decrypt_file_simple(input_path: str, output_path: str, password: str, keyfil
             remaining_meta_header_size = (255 + 4) * num_total_parts
             decrypted_meta_header_structure_info = infile.read(remaining_meta_header_size)
             if len(decrypted_meta_header_structure_info) != remaining_meta_header_size:
-                    print(f"{RED}❌ Error: File input rusak (info struktur meta header dinamis tidak lengkap).{RESET}")
+                    console.print("❌ Error: File input rusak (info struktur meta header dinamis tidak lengkap).", style="bold red")
                     logger.error(f"Info struktur meta header dinamis tidak lengkap di {input_path}")
                     return False, None
             logger.debug(f"Meta header dinamis tidak dienkripsi, membaca info struktur langsung.")
@@ -1687,7 +1707,7 @@ def decrypt_file_simple(input_path: str, output_path: str, password: str, keyfil
             for part_name, part_size in file_structure:
                  part_data = infile.read(part_size)
                  if len(part_data) != part_size:
-                      print(f"{RED}❌ Error: File input rusak (data bagian '{part_name}' tidak lengkap).{RESET}")
+                      console.print(f"❌ Error: File input rusak (data bagian '{part_name}' tidak lengkap).", style="bold red")
                       logger.error(f"Data bagian '{part_name}' tidak lengkap di {input_path}")
                       return False, None
                  parts_read[part_name] = part_data
@@ -1704,7 +1724,7 @@ def decrypt_file_simple(input_path: str, output_path: str, password: str, keyfil
         ciphertext = parts_read.get("ciphertext")
 
         if not all([salt, nonce, stored_checksum, stored_hmac, padding_size_bytes, ciphertext]):
-             print(f"{RED}❌ Error: File input tidak valid atau rusak (bagian penting hilang).{RESET}")
+             console.print("❌ Error: File input tidak valid atau rusak (bagian penting hilang).", style="bold red")
              logger.error(f"File input '{input_path}' rusak atau tidak lengkap.")
              return False, None
 
@@ -1730,13 +1750,13 @@ def decrypt_file_simple(input_path: str, output_path: str, password: str, keyfil
         # V14: Gunakan path file input untuk derivasi HMAC key dari Master Key
         hmac_key = derive_key_from_password_and_keyfile(password, salt, keyfile_path)
         if hmac_key is None:
-             print(f"{RED}❌ Error: Gagal menurunkan kunci HMAC.{RESET}")
+             console.print("❌ Error: Gagal menurunkan kunci HMAC.", style="bold red")
              logger.error(f"Gagal menurunkan kunci HMAC untuk {input_path}")
              return False, None
         hmac_obj = hmac.new(hmac_key, stored_checksum, hashlib.sha256)
         calculated_hmac = hmac_obj.digest()
         if not hmac.compare_digest(calculated_hmac, stored_hmac):
-             print(f"{RED}❌ Error: HMAC tidak cocok. File mungkin rusak atau dimanipulasi.{RESET}")
+             console.print("❌ Error: HMAC tidak cocok. File mungkin rusak atau dimanipulasi.", style="bold red")
              logger.error(f"HMAC tidak cocok untuk {input_path}") # Perbaikan: gunakan input_path
              return False, None
         logger.debug(f"HMAC verifikasi berhasil untuk {input_path}")
@@ -1759,7 +1779,7 @@ def decrypt_file_simple(input_path: str, output_path: str, password: str, keyfil
                 try:
                     plaintext_data = cipher.decrypt_and_verify(ciphertext, tag)
                 except ValueError:
-                    print(f"{RED}❌ Error: Dekripsi gagal. Password atau Keyfile mungkin salah, atau file rusak (otentikasi AES-GCM gagal).{RESET}")
+                    console.print("❌ Error: Dekripsi gagal. Password atau Keyfile mungkin salah, atau file rusak (otentikasi AES-GCM gagal).", style="bold red")
                     logger.error(f"Dekripsi gagal (otentikasi AES-GCM pycryptodome) untuk {input_path}") # Perbaikan: gunakan input_path
                     return False, None
             elif CRYPTOGRAPHY_AVAILABLE:
@@ -1768,17 +1788,17 @@ def decrypt_file_simple(input_path: str, output_path: str, password: str, keyfil
                 try:
                     plaintext_data = cipher.decrypt(nonce, ciphertext, associated_data=None) # Gunakan nonce yang dibaca
                 except Exception as e:
-                    print(f"{RED}❌ Error: Dekripsi gagal. Password atau Keyfile mungkin salah, atau file rusak (otentikasi AES-GCM cryptography gagal).{RESET}")
+                    console.print("❌ Error: Dekripsi gagal. Password atau Keyfile mungkin salah, atau file rusak (otentikasi AES-GCM cryptography gagal).", style="bold red")
                     logger.error(f"Dekripsi gagal (otentikasi AES-GCM cryptography) untuk {input_path}: {e}") # Perbaikan: gunakan input_path
                     return False, None
             else:
-                print(f"{RED}❌ Error: Tidak ada pustaka tersedia untuk dekripsi AES-GCM.{RESET}")
+                console.print("❌ Error: Tidak ada pustaka tersedia untuk dekripsi AES-GCM.", style="bold red")
                 logger.error(f"Tidak ada pustaka tersedia untuk dekripsi AES-GCM.")
                 return False, None
 
         if padding_added > 0:
             if len(plaintext_data) < padding_added:
-                print(f"{RED}❌ Error: File input rusak (padding yang disimpan lebih besar dari data hasil dekripsi).{RESET}")
+                console.print("❌ Error: File input rusak (padding yang disimpan lebih besar dari data hasil dekripsi).", style="bold red")
                 logger.error(f"Padding yang disimpan lebih besar dari data hasil dekripsi di {input_path}") # Perbaikan: gunakan input_path
                 return False, None
             final_plaintext = plaintext_data[:-padding_added]
@@ -1804,7 +1824,7 @@ def decrypt_file_simple(input_path: str, output_path: str, password: str, keyfil
             # --- V12/V13/V14: Gunakan mmap untuk file besar ---
             large_file_threshold = config.get("large_file_threshold", 10 * 1024 * 1024) # 10MB default
             if config.get("use_mmap_for_large_files", False) and len(final_plaintext) > large_file_threshold:
-                print(f"{CYAN}Menggunakan mmap untuk menulis file besar...{RESET}")
+                console.print("Menggunakan mmap untuk menulis file besar...", style="cyan")
                 with open(output_path, 'wb') as outfile:
                     with mmap.mmap(outfile.fileno(), len(final_plaintext), access=mmap.ACCESS_WRITE) as mmapped_outfile:
                         mmapped_outfile[:] = final_plaintext
@@ -1833,32 +1853,32 @@ def decrypt_file_simple(input_path: str, output_path: str, password: str, keyfil
                 # Variabel lain yang sensitif bisa ditambahkan di sini
 
             if hide_paths:
-                print(f"{GREEN}✅ File berhasil didekripsi.{RESET}")
+                console.print("✅ File berhasil didekripsi.", style="green")
                 logger.info(f"Dekripsi (simple) berhasil ke file di direktori: {output_dir}")
             else:
-                print(f"{GREEN}✅ File '{input_path}' berhasil didekripsi ke '{output_path}' (Simple Mode).{RESET}")
+                console.print(f"✅ File '{input_path}' berhasil didekripsi ke '{output_path}' (Simple Mode).", style="green")
                 logger.info(f"Dekripsi (simple) berhasil dan checksum cocok: {input_path} -> {output_path}")
 
             return True, output_path
         else:
-            print(f"{RED}❌ Error: Dekripsi gagal. Checksum tidak cocok. File mungkin rusak atau dimanipulasi.{RESET}")
+            console.print("❌ Error: Dekripsi gagal. Checksum tidak cocok. File mungkin rusak atau dimanipulasi.", style="bold red")
             logger.error(f"Dekripsi (simple) gagal (checksum tidak cocok) untuk {input_path} -> {output_path}")
             return False, None
 
     except FileNotFoundError:
         if hide_paths:
-            print(f"{RED}❌ Error: File input tidak ditemukan.{RESET}")
+            console.print("❌ Error: File input tidak ditemukan.", style="bold red")
             logger.error(f"File input tidak ditemukan saat dekripsi (simple) di direktori: {output_dir}")
         else:
-            print(f"{RED}❌ Error: File '{input_path}' tidak ditemukan.{RESET}") # Perbaikan: gunakan input_path
+            console.print(f"❌ Error: File '{input_path}' tidak ditemukan.", style="bold red") # Perbaikan: gunakan input_path
             logger.error(f"File '{input_path}' tidak ditemukan saat dekripsi (simple).") # Perbaikan: gunakan input_path
         return False, None
     except Exception as e:
         if hide_paths:
-            print(f"{RED}❌ Error saat mendekripsi file: {e}{RESET}")
+            console.print(f"❌ Error saat mendekripsi file: {e}", style="bold red")
             logger.error(f"Error saat mendekripsi (simple) di direktori '{output_dir}': {e}")
         else:
-            print(f"{RED}❌ Error saat mendekripsi file (simple): {e}{RESET}")
+            console.print(f"❌ Error saat mendekripsi file (simple): {e}", style="bold red")
             logger.error(f"Error saat mendekripsi (simple) {input_path}: {e}") # Perbaikan: gunakan input_path
         return False, None
 
@@ -1868,17 +1888,17 @@ def encrypt_file_with_master_key(input_path: str, output_path: str, master_key: 
     output_dir = os.path.dirname(output_path) or "."
 
     if not os.path.isfile(input_path):
-        print(f"{RED}❌ Error: File input '{input_path}' tidak ditemukan.{RESET}")
+        console.print(f"❌ Error: File input '{input_path}' tidak ditemukan.", style="bold red")
         logger.error(f"File input '{input_path}' tidak ditemukan.")
         return False, None
 
     if not os.access(input_path, os.R_OK):
-        print(f"{RED}❌ Error: File input '{input_path}' tidak dapat dibaca.{RESET}")
+        console.print(f"❌ Error: File input '{input_path}' tidak dapat dibaca.", style="bold red")
         logger.error(f"File input '{input_path}' tidak dapat dibaca (izin akses).")
         return False, None
 
     if os.path.getsize(input_path) == 0:
-        print(f"{RED}❌ Error: File input '{input_path}' kosong.{RESET}")
+        console.print(f"❌ Error: File input '{input_path}' kosong.", style="bold red")
         logger.error(f"File input '{input_path}' kosong.")
         return False, None
 
@@ -1887,10 +1907,10 @@ def encrypt_file_with_master_key(input_path: str, output_path: str, master_key: 
 
     # Validasi ekstensi output sederhana
     if not output_path.endswith('.encrypted'):
-        print(f"{YELLOW}⚠️  Peringatan: Nama file output '{output_path}' tidak memiliki ekstensi '.encrypted'.{RESET}")
-        confirm = input(f"{YELLOW}Lanjutkan dengan nama ini? (y/N): {RESET}").strip().lower()
+        console.print(f"⚠️  Peringatan: Nama file output '{output_path}' tidak memiliki ekstensi '.encrypted'.", style="yellow")
+        confirm = Prompt.ask("[yellow]Lanjutkan dengan nama ini? (y/N):[/yellow]").strip().lower()
         if confirm not in ['y', 'yes']:
-            print(f"{YELLOW}Operasi dibatalkan.{RESET}")
+            console.print("Operasi dibatalkan.", style="yellow")
             logger.info("Operasi dibatalkan karena nama output tidak memiliki ekstensi '.encrypted'.")
             return False, None
 
@@ -1899,10 +1919,10 @@ def encrypt_file_with_master_key(input_path: str, output_path: str, master_key: 
 
     try:
         if hide_paths:
-            print(f"\n{CYAN}[ Encrypting... ]{RESET}")
+            console.print("\n[cyan][ Encrypting... ][/cyan]")
             logger.info(f"Memulai enkripsi file (dengan Master Key) di direktori: {output_dir}")
         else:
-            print(f"\n{CYAN}[ Encrypting with Master Key... ]{RESET}")
+            console.print("\n[cyan][ Encrypting with Master Key... ][/cyan]")
             logger.info(f"Memulai enkripsi file (dengan Master Key): {input_path}")
 
         input_size = os.path.getsize(input_path)
@@ -1978,12 +1998,12 @@ def encrypt_file_with_master_key(input_path: str, output_path: str, master_key: 
                 cipher = AES.new(file_key, AES.MODE_GCM, nonce=nonce)
                 ciphertext, tag = cipher.encrypt_and_digest(data)
             else:
-                print(f"{RED}❌ Error: Tidak ada pustaka tersedia untuk algoritma '{algo}'.{RESET}")
+                console.print(f"❌ Error: Tidak ada pustaka tersedia untuk algoritma '{algo}'.", style="bold red")
                 logger.error(f"Tidak ada pustaka tersedia untuk algoritma '{algo}'.")
                 return False, None
         else:
-            print(f"{RED}❌ Error: Algoritma enkripsi '{algo}' tidak dikenal atau tidak didukung di v14 ini.{RESET}")
-            logger.error(f"Algoritma enkripsi '{algo}' tidak dikenal atau tidak didukung di v14 ini.")
+            console.print(f"❌ Error: Algoritma enkripsi '{algo}' tidak dikenal atau tidak didukung di v15 ini.", style="bold red")
+            logger.error(f"Algoritma enkripsi '{algo}' tidak dikenal atau tidak didukung di v15 ini.")
             return False, None
 
         # Kunci file terenkripsi tetap seperti sebelumnya
@@ -1995,7 +2015,7 @@ def encrypt_file_with_master_key(input_path: str, output_path: str, master_key: 
         # Gunakan turunan dari Master Key untuk HMAC (V14: Salt HKDF unik)
         hmac_key = derive_hmac_key_from_master_key(master_key, output_path) # Gunakan path file input untuk derivasi HMAC
         if hmac_key is None:
-             print(f"{RED}❌ Error: Gagal menurunkan kunci HMAC dari Master Key.{RESET}")
+             console.print("❌ Error: Gagal menurunkan kunci HMAC dari Master Key.", style="bold red")
              logger.error(f"Gagal menurunkan kunci HMAC dari Master Key untuk {input_path}")
              return False, None
         hmac_obj = hmac.new(hmac_key, original_checksum, hashlib.sha256)
@@ -2077,7 +2097,7 @@ def encrypt_file_with_master_key(input_path: str, output_path: str, master_key: 
 
         # --- V8: Verifikasi Integritas Output ---
         if config.get("verify_output_integrity", True):
-            print(f"{CYAN}Memverifikasi integritas file output...{RESET}")
+            console.print("Memverifikasi integritas file output...", style="cyan")
             try:
                 with open(output_path, 'rb') as f:
                     file_content = f.read()
@@ -2087,13 +2107,13 @@ def encrypt_file_with_master_key(input_path: str, output_path: str, master_key: 
                 # Atau, kita bisa enkripsi ulang file input dan bandingkan outputnya (lebih berat).
                 # Untuk saat ini, kita hanya memastikan file output bisa dibaca dan ukurannya sesuai.
                 if os.path.getsize(output_path) != output_size:
-                    print(f"{RED}❌ Error: Ukuran file output tidak sesuai setelah verifikasi.{RESET}")
+                    console.print("❌ Error: Ukuran file output tidak sesuai setelah verifikasi.", style="bold red")
                     logger.error(f"Verifikasi integritas output gagal: ukuran tidak cocok untuk {output_path}")
                     return False, None
-                print(f"{GREEN}✅ Verifikasi integritas output berhasil.{RESET}")
+                console.print("✅ Verifikasi integritas output berhasil.", style="green")
                 logger.info(f"Verifikasi integritas output berhasil untuk {output_path}")
             except Exception as e:
-                print(f"{RED}❌ Error saat memverifikasi integritas output: {e}{RESET}")
+                console.print(f"❌ Error saat memverifikasi integritas output: {e}", style="bold red")
                 logger.error(f"Verifikasi integritas output gagal untuk {output_path}: {e}")
                 return False, None
 
@@ -2115,28 +2135,28 @@ def encrypt_file_with_master_key(input_path: str, output_path: str, master_key: 
             # Variabel lain yang sensitif bisa ditambahkan di sini
 
         if hide_paths:
-            print(f"{GREEN}✅ File berhasil dienkripsi.{RESET}")
+            console.print("✅ File berhasil dienkripsi.", style="green")
             logger.info(f"Enkripsi (dengan Master Key) berhasil ke file di direktori: {output_dir}")
         else:
-            print(f"{GREEN}✅ File '{input_path}' berhasil dienkripsi ke '{output_path}' (dengan Master Key).{RESET}")
+            console.print(f"✅ File '{input_path}' berhasil dienkripsi ke '{output_path}' (dengan Master Key).", style="green")
             logger.info(f"Enkripsi (dengan Master Key) berhasil: {input_path} -> {output_path}")
 
         return True, output_path
 
     except FileNotFoundError:
         if hide_paths:
-            print(f"{RED}❌ Error: File input tidak ditemukan.{RESET}")
+            console.print("❌ Error: File input tidak ditemukan.", style="bold red")
             logger.error(f"File input tidak ditemukan saat enkripsi (dengan Master Key) di direktori: {output_dir}")
         else:
-            print(f"{RED}❌ Error: File '{input_path}' tidak ditemukan.{RESET}") # Perbaikan: gunakan input_path
+            console.print(f"❌ Error: File '{input_path}' tidak ditemukan.", style="bold red") # Perbaikan: gunakan input_path
             logger.error(f"File '{input_path}' tidak ditemukan saat enkripsi (dengan Master Key).") # Perbaikan: gunakan input_path
         return False, None
     except Exception as e:
         if hide_paths:
-            print(f"{RED}❌ Error saat mengenkripsi file: {e}{RESET}")
+            console.print(f"❌ Error saat mengenkripsi file: {e}", style="bold red")
             logger.error(f"Error saat mengenkripsi (dengan Master Key) di direktori '{output_dir}': {e}")
         else:
-            print(f"{RED}❌ Error saat mengenkripsi file (dengan Master Key): {e}{RESET}")
+            console.print(f"❌ Error saat mengenkripsi file (dengan Master Key): {e}", style="bold red")
             logger.error(f"Error saat mengenkripsi (dengan Master Key) {input_path}: {e}") # Perbaikan: gunakan input_path
         return False, None
 
@@ -2145,36 +2165,36 @@ def decrypt_file_with_master_key(input_path: str, output_path: str, master_key: 
     start_time = time.time()
 
     if not os.path.isfile(input_path):
-        print(f"{RED}❌ Error: File input '{input_path}' tidak ditemukan.{RESET}")
+        console.print(f"❌ Error: File input '{input_path}' tidak ditemukan.", style="bold red")
         logger.error(f"File input '{input_path}' tidak ditemukan.")
         return False, None
 
     if not os.access(input_path, os.R_OK):
-        print(f"{RED}❌ Error: File input '{input_path}' tidak dapat dibaca.{RESET}")
+        console.print(f"❌ Error: File input '{input_path}' tidak dapat dibaca.", style="bold red")
         logger.error(f"File input '{input_path}' tidak dapat dibaca (izin akses).")
         return False, None
 
     if os.path.getsize(input_path) == 0:
-        print(f"{RED}❌ Error: File input '{input_path}' kosong.{RESET}")
+        console.print(f"❌ Error: File input '{input_path}' kosong.", style="bold red")
         logger.error(f"File input '{input_path}' kosong.")
         return False, None
 
     # Validasi ekstensi input sederhana
     if not input_path.endswith('.encrypted'):
-        print(f"{YELLOW}⚠️  Peringatan: File input '{input_path}' tidak memiliki ekstensi '.encrypted'.{RESET}")
-        confirm = input(f"{YELLOW}Apakah ini file terenkripsi Thena_dev? (y/N): {RESET}").strip().lower()
+        console.print(f"⚠️  Peringatan: File input '{input_path}' tidak memiliki ekstensi '.encrypted'.", style="yellow")
+        confirm = Prompt.ask("[yellow]Apakah ini file terenkripsi Thena_dev? (y/N):[/yellow]").strip().lower()
         if confirm not in ['y', 'yes']:
-            print(f"{YELLOW}Operasi dibatalkan.{RESET}")
+            console.print("Operasi dibatalkan.", style="yellow")
             logger.info("Operasi dibatalkan karena ekstensi input '.encrypted' tidak ditemukan.")
             return False, None
 
     try:
         if hide_paths:
-            print(f"\n{CYAN}[ Decrypting... ]{RESET}")
+            console.print("\n[cyan][ Decrypting... ][/cyan]")
             output_dir = os.path.dirname(output_path) or "."
             logger.info(f"Memulai dekripsi file (dengan Master Key) ke direktori: {output_dir}")
         else:
-            print(f"\n{CYAN}[ Decrypting with Master Key... ]{RESET}")
+            console.print("\n[cyan][ Decrypting with Master Key... ][/cyan]")
             logger.info(f"Memulai dekripsi file (dengan Master Key): {input_path}")
 
         output_dir = os.path.dirname(output_path) or "."
@@ -2186,8 +2206,8 @@ def decrypt_file_with_master_key(input_path: str, output_path: str, master_key: 
         if free_space < estimated_output_size:
             required_mb = estimated_output_size / (1024*1024)
             free_mb = free_space / (1024*1024)
-            print(f"{RED}❌ Error: Ruang disk tidak cukup.{RESET}")
-            print(f"   Dibutuhkan sekitar {required_mb:.2f} MB, tersedia {free_mb:.2f} MB di '{output_dir}'.")
+            console.print("❌ Error: Ruang disk tidak cukup.", style="bold red")
+            console.print(f"   Dibutuhkan sekitar {required_mb:.2f} MB, tersedia {free_mb:.2f} MB di '{output_dir}'.")
             logger.error(f"Ruang disk tidak cukup untuk '{input_path}'. Dibutuhkan {estimated_output_size} bytes, tersedia {free_space} bytes di '{output_dir}'.")
             return False, None
 
@@ -2216,7 +2236,7 @@ def decrypt_file_with_master_key(input_path: str, output_path: str, master_key: 
             remaining_meta_header_size = (255 + 4) * num_total_parts
             decrypted_meta_header_structure_info = infile.read(remaining_meta_header_size)
             if len(decrypted_meta_header_structure_info) != remaining_meta_header_size:
-                 print(f"{RED}❌ Error: File input rusak (info struktur meta header dinamis tidak lengkap).{RESET}")
+                 console.print("❌ Error: File input rusak (info struktur meta header dinamis tidak lengkap).", style="bold red")
                  logger.error(f"Info struktur meta header dinamis tidak lengkap di {input_path}")
                  return False, None
             logger.debug(f"Meta header dinamis tidak dienkripsi, membaca info struktur langsung.")
@@ -2241,7 +2261,7 @@ def decrypt_file_with_master_key(input_path: str, output_path: str, master_key: 
             for part_name, part_size in file_structure:
                  part_data = infile.read(part_size)
                  if len(part_data) != part_size:
-                      print(f"{RED}❌ Error: File input rusak (data bagian '{part_name}' tidak lengkap).{RESET}")
+                      console.print(f"❌ Error: File input rusak (data bagian '{part_name}' tidak lengkap).", style="bold red")
                       logger.error(f"Data bagian '{part_name}' tidak lengkap di {input_path}")
                       return False, None
                  parts_read[part_name] = part_data
@@ -2260,7 +2280,7 @@ def decrypt_file_with_master_key(input_path: str, output_path: str, master_key: 
         tag = parts_read.get("tag") if PYCRYPTODOME_AVAILABLE else b""
 
         if not all([nonce, stored_checksum, stored_hmac, padding_size_bytes, len_encrypted_key_bytes, encrypted_file_key, ciphertext]):
-             print(f"{RED}❌ Error: File input tidak valid atau rusak (bagian penting hilang).{RESET}")
+             console.print("❌ Error: File input tidak valid atau rusak (bagian penting hilang).", style="bold red")
              logger.error(f"File input '{input_path}' rusak atau tidak lengkap.")
              return False, None
 
@@ -2269,7 +2289,7 @@ def decrypt_file_with_master_key(input_path: str, output_path: str, master_key: 
         len_encrypted_key = int.from_bytes(len_encrypted_key_bytes, byteorder='big')
 
         if len(encrypted_file_key) != len_encrypted_key:
-             print(f"{RED}❌ Error: File input rusak (panjang encrypted key tidak sesuai).{RESET}")
+             console.print("❌ Error: File input rusak (panjang encrypted key tidak sesuai).", style="bold red")
              logger.error(f"File input '{input_path}' rusak: panjang encrypted key tidak sesuai.")
              return False, None
 
@@ -2278,7 +2298,7 @@ def decrypt_file_with_master_key(input_path: str, output_path: str, master_key: 
         try:
             file_key = master_fernet.decrypt(encrypted_file_key)
         except Exception as e:
-            print(f"{RED}❌ Error: Gagal mendekripsi File Key. Master Key mungkin salah.{RESET}")
+            console.print("❌ Error: Gagal mendekripsi File Key. Master Key mungkin salah.", style="bold red")
             logger.error(f"Gagal mendekripsi File Key: {e}")
             return False, None
 
@@ -2298,13 +2318,13 @@ def decrypt_file_with_master_key(input_path: str, output_path: str, master_key: 
         # Gunakan turunan dari Master Key untuk HMAC (V14: Salt HKDF unik)
         hmac_key = derive_hmac_key_from_master_key(master_key, input_path) # Gunakan path file input untuk derivasi HMAC
         if hmac_key is None:
-             print(f"{RED}❌ Error: Gagal menurunkan kunci HMAC dari Master Key.{RESET}")
+             console.print("❌ Error: Gagal menurunkan kunci HMAC dari Master Key.", style="bold red")
              logger.error(f"Gagal menurunkan kunci HMAC dari Master Key untuk {input_path}")
              return False, None
         hmac_obj = hmac.new(hmac_key, stored_checksum, hashlib.sha256)
         calculated_hmac = hmac_obj.digest()
         if not hmac.compare_digest(calculated_hmac, stored_hmac):
-             print(f"{RED}❌ Error: HMAC tidak cocok. File mungkin rusak atau dimanipulasi.{RESET}")
+             console.print("❌ Error: HMAC tidak cocok. File mungkin rusak atau dimanipulasi.", style="bold red")
              logger.error(f"HMAC tidak cocok untuk {input_path}") # Perbaikan: gunakan input_path
              return False, None
         logger.debug(f"HMAC verifikasi berhasil untuk {input_path}")
@@ -2326,7 +2346,7 @@ def decrypt_file_with_master_key(input_path: str, output_path: str, master_key: 
                 try:
                     plaintext_data = cipher.decrypt_and_verify(ciphertext, tag)
                 except ValueError:
-                    print(f"{RED}❌ Error: Dekripsi gagal. File rusak (otentikasi AES-GCM gagal).{RESET}")
+                    console.print("❌ Error: Dekripsi gagal. File rusak (otentikasi AES-GCM gagal).", style="bold red")
                     logger.error(f"Dekripsi gagal (otentikasi AES-GCM pycryptodome) untuk {input_path}") # Perbaikan: gunakan input_path
                     return False, None
             elif CRYPTOGRAPHY_AVAILABLE:
@@ -2334,17 +2354,17 @@ def decrypt_file_with_master_key(input_path: str, output_path: str, master_key: 
                 try:
                     plaintext_data = cipher.decrypt(nonce, ciphertext, associated_data=None)
                 except Exception as e:
-                    print(f"{RED}❌ Error: Dekripsi gagal. File rusak (otentikasi AES-GCM cryptography gagal).{RESET}")
+                    console.print("❌ Error: Dekripsi gagal. File rusak (otentikasi AES-GCM cryptography gagal).", style="bold red")
                     logger.error(f"Dekripsi gagal (otentikasi AES-GCM cryptography) untuk {input_path}: {e}") # Perbaikan: gunakan input_path
                     return False, None
             else:
-                print(f"{RED}❌ Error: Tidak ada pustaka tersedia untuk dekripsi AES-GCM.{RESET}")
+                console.print("❌ Error: Tidak ada pustaka tersedia untuk dekripsi AES-GCM.", style="bold red")
                 logger.error(f"Tidak ada pustaka tersedia untuk dekripsi AES-GCM.")
                 return False, None
 
         if padding_added > 0:
             if len(plaintext_data) < padding_added:
-                print(f"{RED}❌ Error: File input rusak (padding yang disimpan lebih besar dari data hasil dekripsi).{RESET}")
+                console.print("❌ Error: File input rusak (padding yang disimpan lebih besar dari data hasil dekripsi).", style="bold red")
                 logger.error(f"Padding yang disimpan lebih besar dari data hasil dekripsi di {input_path}") # Perbaikan: gunakan input_path
                 return False, None
             final_plaintext = plaintext_data[:-padding_added]
@@ -2366,7 +2386,7 @@ def decrypt_file_with_master_key(input_path: str, output_path: str, master_key: 
             # --- V12/V13/V14: Gunakan mmap untuk file besar ---
             large_file_threshold = config.get("large_file_threshold", 10 * 1024 * 1024) # 10MB default
             if config.get("use_mmap_for_large_files", False) and len(final_plaintext) > large_file_threshold:
-                print(f"{CYAN}Menggunakan mmap untuk menulis file besar...{RESET}")
+                console.print("Menggunakan mmap untuk menulis file besar...", style="cyan")
                 with open(output_path, 'wb') as outfile:
                     with mmap.mmap(outfile.fileno(), len(final_plaintext), access=mmap.ACCESS_WRITE) as mmapped_outfile:
                         mmapped_outfile[:] = final_plaintext
@@ -2398,41 +2418,41 @@ def decrypt_file_with_master_key(input_path: str, output_path: str, master_key: 
                 # Variabel lain yang sensitif bisa ditambahkan di sini
 
             if hide_paths:
-                print(f"{GREEN}✅ File berhasil didekripsi.{RESET}")
+                console.print("✅ File berhasil didekripsi.", style="green")
                 logger.info(f"Dekripsi (dengan Master Key) berhasil ke file di direktori: {output_dir}")
             else:
-                print(f"{GREEN}✅ File '{input_path}' berhasil didekripsi ke '{output_path}' (dengan Master Key).{RESET}")
+                console.print(f"✅ File '{input_path}' berhasil didekripsi ke '{output_path}' (dengan Master Key).", style="green")
                 logger.info(f"Dekripsi (dengan Master Key) berhasil dan checksum cocok: {input_path} -> {output_path}")
 
             if os.path.exists(config["master_key_file"]):
                 try:
                     os.remove(config["master_key_file"])
-                    print(f"{GREEN}✅ File Master Key '{config['master_key_file']}' dihapus secara otomatis setelah dekripsi.{RESET}")
+                    console.print(f"✅ File Master Key '{config['master_key_file']}' dihapus secara otomatis setelah dekripsi.", style="green")
                     logger.info(f"File Master Key '{config['master_key_file']}' dihapus secara otomatis setelah dekripsi berhasil.")
                 except OSError as e:
-                    print(f"{YELLOW}⚠️  Peringatan: Gagal menghapus file Master Key '{config['master_key_file']}' secara otomatis: {e}{RESET}")
+                    console.print(f"⚠️  Peringatan: Gagal menghapus file Master Key '{config['master_key_file']}' secara otomatis: {e}", style="yellow")
                     logger.warning(f"Gagal menghapus file Master Key '{config['master_key_file']}' secara otomatis: {e}")
 
             return True, output_path
         else:
-            print(f"{RED}❌ Error: Dekripsi gagal. Checksum tidak cocok. File mungkin rusak atau dimanipulasi.{RESET}")
+            console.print("❌ Error: Dekripsi gagal. Checksum tidak cocok. File mungkin rusak atau dimanipulasi.", style="bold red")
             logger.error(f"Dekripsi (dengan Master Key) gagal (checksum tidak cocok) untuk {input_path} -> {output_path}")
             return False, None
 
     except FileNotFoundError:
         if hide_paths:
-            print(f"{RED}❌ Error: File input tidak ditemukan.{RESET}")
+            console.print("❌ Error: File input tidak ditemukan.", style="bold red")
             logger.error(f"File input tidak ditemukan saat dekripsi (dengan Master Key) di direktori: {output_dir}")
         else:
-            print(f"{RED}❌ Error: File '{input_path}' tidak ditemukan.{RESET}") # Perbaikan: gunakan input_path
+            console.print(f"❌ Error: File '{input_path}' tidak ditemukan.", style="bold red") # Perbaikan: gunakan input_path
             logger.error(f"File '{input_path}' tidak ditemukan saat dekripsi (dengan Master Key).") # Perbaikan: gunakan input_path
         return False, None
     except Exception as e:
         if hide_paths:
-            print(f"{RED}❌ Error saat mendekripsi file: {e}{RESET}")
+            console.print(f"❌ Error saat mendekripsi file: {e}", style="bold red")
             logger.error(f"Error saat mendekripsi (dengan Master Key) di direktori '{output_dir}': {e}")
         else:
-            print(f"{RED}❌ Error saat mendekripsi file (dengan Master Key): {e}{RESET}")
+            console.print(f"❌ Error saat mendekripsi file (dengan Master Key): {e}", style="bold red")
             logger.error(f"Error saat mendekripsi (dengan Master Key) {input_path}: {e}") # Perbaikan: gunakan input_path
         return False, None
 
@@ -2444,7 +2464,7 @@ def derive_hmac_key_from_master_key(master_key: bytes, input_file_path: str) -> 
     V14: Salt HKDF juga mencakup hash dari path file input.
     """
     if not CRYPTOGRAPHY_AVAILABLE:
-        print(f"{RED}❌ Error: HKDF (untuk HMAC) memerlukan modul 'cryptography'.{RESET}")
+        console.print("❌ Error: HKDF (untuk HMAC) memerlukan modul 'cryptography'.", style="bold red")
         logger.error("HKDF (untuk HMAC) memerlukan modul 'cryptography', yang tidak tersedia.")
         return secrets.token_bytes(config["hmac_key_length"]) # Fallback ke acak jika tidak tersedia
 
@@ -2478,7 +2498,7 @@ def derive_key_from_master_key_for_header(master_key: bytes, input_file_path: st
     Info HKDF menggunakan string konfigurasi dan hash dari path file input.
     """
     if not CRYPTOGRAPHY_AVAILABLE:
-        print(f"{RED}❌ Error: HKDF (untuk header) memerlukan modul 'cryptography'.{RESET}")
+        console.print("❌ Error: HKDF (untuk header) memerlukan modul 'cryptography'.", style="bold red")
         logger.error("HKDF (untuk header) memerlukan modul 'cryptography', yang tidak tersedia.")
         return secrets.token_bytes(config["dynamic_header_encryption_key_length"]) # Fallback ke acak jika tidak tersedia
 
@@ -2507,12 +2527,7 @@ def derive_key_from_master_key_for_header(master_key: bytes, input_file_path: st
 
 # --- Fungsi UI ---
 def print_box(title, options=None, width=80):
-    """Mencetak kotak solid besar dengan logo ASCII di judul dan opsi menu."""
-    border_color = CYAN
-    title_color = WHITE
-    option_color = MAGENTA
-    reset = RESET
-
+    """Mencetak kotak menu menggunakan Rich."""
     logo_ascii = r"""    ⢀⣠⣴⣖⣺⣿⣍⠙⠛⠒⠦⣤⣀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣠⡤⠖⠚⠋⠉⣿⣟⣒⣶⣤⣀
     ⠙⠉⠉⠉⠉⠙⠛⢶⣶⡦⠀⠀⠉⠳⣤⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⡴⠛⠁⠀⠀⣶⣶⠞⠛⠉⠉⠉⠉⠙
     ⠀⠀⠀⠀⠀⠀⠀⠀⠈⠛⢿⣟⣀⡀⠈⠳⣄⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⡴⠋⠀⢀⢐⣿⠟⠋⠀⠀⠀⠀⠀⠀⠀⠀
@@ -2536,22 +2551,13 @@ def print_box(title, options=None, width=80):
     ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⡠⠖⠁⠀⠀⢠⡿⠚⠁⠀⠀⠀⠙⠲⣤⠀⠀⠀⠑⠢⢄⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
     ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⡜⠀⠀⠀⠀⠀⠀⠀⠀⠑⠄⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀"""
 
-    logo_lines = logo_ascii.split('\n')
-    print(f"{border_color}╭" + "─" * (width - 2) + f"╮{reset}")
-    for line in logo_lines:
-        padded_line = line.center(width - 2)[:width-2]
-        print(f"{border_color}│{reset}{padded_line}{border_color}│{reset}")
-    if logo_lines:
-        print(f"{border_color}│{reset}" + " " * (width - 2) + f"{border_color}│{reset}")
-
-    title_centered = title.center(width - 2)
-    print(f"{border_color}│{reset}{title_color}{BOLD}{title_centered}{RESET}{border_color}│{reset}")
-    print(f"{border_color}├" + "─" * (width - 2) + f"┤{reset}")
+    table = Table(show_header=False, box=None, width=width)
+    table.add_row(logo_ascii)
     if options:
         for option in options:
-            option_padded = option.ljust(width - 4)
-            print(f"{border_color}│{reset} {option_color}{option_padded}{reset} {border_color}│{reset}")
-    print(f"{border_color}╰" + "─" * (width - 2) + f"╯{reset}")
+            table.add_row(option, style="magenta")
+
+    console.print(Panel(table, title=f"[bold white]{title}[/bold white]", border_style="cyan", expand=False))
 
 # --- Fungsi Mode Batch ---
 def process_batch_file(args):
@@ -2572,7 +2578,7 @@ def process_batch_file(args):
 def batch_process(directory: str, mode: str, password: str, keyfile_path: str = None, add_padding: bool = True, hide_paths: bool = False, parallel: bool = False):
     """Memproses semua file dalam direktori secara batch."""
     if not os.path.isdir(directory):
-        print(f"{RED}❌ Error: Direktori '{directory}' tidak ditemukan.{RESET}")
+        console.print(f"❌ Error: Direktori '{directory}' tidak ditemukan.", style="bold red")
         logger.error(f"Direktori batch '{directory}' tidak ditemukan.")
         return
 
@@ -2580,7 +2586,7 @@ def batch_process(directory: str, mode: str, password: str, keyfile_path: str = 
     target_ext = ".encrypted" if mode == 'decrypt' else ""
     files_to_process = []
     if config.get("enable_recursive_batch", False):
-        print(f"{CYAN}Memindai sub-direktori secara rekursif...{RESET}")
+        console.print("Memindai sub-direktori secara rekursif...", style="cyan")
         for root, dirs, files in os.walk(directory):
             for file in files:
                 if file.endswith(target_ext):
@@ -2589,16 +2595,16 @@ def batch_process(directory: str, mode: str, password: str, keyfile_path: str = 
         files_to_process = [os.path.join(directory, f) for f in os.listdir(directory) if os.path.isfile(os.path.join(directory, f)) and f.endswith(target_ext)]
 
     if not files_to_process:
-        print(f"{YELLOW}⚠️  Tidak ditemukan file yang cocok untuk {mode} di direktori '{directory}'.{RESET}")
+        console.print(f"⚠️  Tidak ditemukan file yang cocok untuk {mode} di direktori '{directory}'.", style="yellow")
         logger.info(f"Tidak ditemukan file yang cocok untuk {mode} di direktori '{directory}' (rekursif: {config.get('enable_recursive_batch', False)}).")
         return
 
-    print(f"{CYAN}Memulai {mode} batch untuk {len(files_to_process)} file...{RESET}")
+    console.print(f"Memulai {mode} batch untuk {len(files_to_process)} file...", style="cyan")
     logger.info(f"Memulai {mode} batch untuk {len(files_to_process)} file di '{directory}' (rekursif: {config.get('enable_recursive_batch', False)}).")
 
     success_count = 0
     if parallel and config.get("batch_parallel", False):
-        print(f"{CYAN}Menggunakan mode paralel ({config.get('batch_workers', 2)} workers).{RESET}")
+        console.print(f"Menggunakan mode paralel ({config.get('batch_workers', 2)} workers).", style="cyan")
         from concurrent.futures import ThreadPoolExecutor, as_completed # Impor di sini untuk menghindari error jika tidak digunakan
         with ThreadPoolExecutor(max_workers=config.get("batch_workers", 2)) as executor:
             futures = [executor.submit(process_batch_file, (f, directory, password, keyfile_path, add_padding, hide_paths, mode)) for f in files_to_process]
@@ -2609,7 +2615,7 @@ def batch_process(directory: str, mode: str, password: str, keyfile_path: str = 
     else:
         # Mode serial
         for input_file in files_to_process:
-            print(f"\n{BOLD}Memproses: {os.path.relpath(input_file, directory)}{RESET}") # Tampilkan path relatif untuk lebih rapi
+            console.print(f"\n[bold]Memproses: {os.path.relpath(input_file, directory)}[/bold]") # Tampilkan path relatif untuk lebih rapi
             if mode == 'encrypt':
                 suffix = config.get("output_name_suffix", "")
                 output_file = os.path.join(directory, os.path.splitext(os.path.basename(input_file))[0] + suffix + ".encrypted")
@@ -2622,7 +2628,7 @@ def batch_process(directory: str, mode: str, password: str, keyfile_path: str = 
             if success:
                 success_count += 1
 
-    print(f"\n{GREEN}✅ Batch {mode} selesai. {success_count}/{len(files_to_process)} file berhasil.{RESET}")
+    console.print(f"\n✅ Batch {mode} selesai. {success_count}/{len(files_to_process)} file berhasil.", style="green")
     logger.info(f"Batch {mode} selesai. {success_count}/{len(files_to_process)} file berhasil.")
 
 # --- Fungsi Utama ---
@@ -2654,7 +2660,7 @@ def main():
         integrity_thread.start()
         logger.info(f"Runtime integrity checker dimulai dengan interval {interval}s.")
 
-    parser = argparse.ArgumentParser(description='Thena Dev Encryption Tool V14 (Enhanced Security, Simplified Menu, Bug Fixed, Security Improved, Hardened, Improved Hardening, Advanced Hardening, Runtime Integrity, Anti-Debug, Secure Memory, Custom Format, Hardware Ready, PQ-Ready, Dynamic Format, Fully Hardened, Argon2 Enhanced, Secure Memory Overwrite Fixed, Advanced Hardening Implemented, Advanced KDF Parameters, Dynamic File Format, Runtime Data Integrity, Secure Memory Locking, Anti-Debugging, Runtime Integrity Checks, Secure Memory Overwrite, Advanced Secure Memory Handling, Dynamic Header Format, Runtime Data Integrity Checks, Anti-Analysis, Secure Memory Locking (mlock), Secure Memory Overwrite (memset), Custom Encrypted File Format (Shuffle & Encrypt Header), Advanced KDF Parameters, Hardware Integration Ready (Placeholder), Post-Quantum Ready (Placeholder)')
+    parser = argparse.ArgumentParser(description='Thena Dev Encryption Tool V15 (Rich UI, bcrypt KDF, Enhanced Security, etc.)')
     parser.add_argument('--encrypt', action='store_true', help='Mode enkripsi')
     parser.add_argument('--decrypt', action='store_true', help='Mode dekripsi')
     parser.add_argument('--batch', action='store_true', help='Mode batch (memerlukan --dir)')
@@ -2679,10 +2685,10 @@ def main():
             with open(args.password_file, 'r') as pf:
                 args.password = pf.read().strip()
         except FileNotFoundError:
-            print(f"{RED}❌ Error: File password '{args.password_file}' tidak ditemukan.{RESET}")
+            console.print(f"❌ Error: File password '{args.password_file}' tidak ditemukan.", style="bold red")
             sys.exit(1)
         except Exception as e:
-            print(f"{RED}❌ Error saat membaca password dari file: {e}{RESET}")
+            console.print(f"❌ Error saat membaca password dari file: {e}", style="bold red")
             sys.exit(1)
 
     # Override konfigurasi kompresi jika diset via argumen
@@ -2695,17 +2701,17 @@ def main():
 
     if args.batch:
         if not args.dir or not args.password:
-            print(f"{RED}❌ Error: Argumen --dir dan --password wajib untuk mode batch.{RESET}")
+            console.print("❌ Error: Argumen --dir dan --password wajib untuk mode batch.", style="bold red")
             sys.exit(1)
         if not (args.encrypt or args.decrypt):
-            print(f"{RED}❌ Error: Pilih --encrypt atau --decrypt untuk mode batch.{RESET}")
+            console.print("❌ Error: Pilih --encrypt atau --decrypt untuk mode batch.", style="bold red")
             sys.exit(1)
         batch_process(args.dir, 'encrypt' if args.encrypt else 'decrypt', args.password, args.keyfile, add_padding=not args.no_padding, hide_paths=args.hide_paths, parallel=config.get("batch_parallel", False))
         return
 
     if args.encrypt or args.decrypt:
         if not args.input or not args.output or not args.password:
-            print(f"{RED}❌ Error: Argumen --input, --output, dan --password wajib untuk mode baris perintah tunggal.{RESET}")
+            console.print("❌ Error: Argumen --input, --output, dan --password wajib untuk mode baris perintah tunggal.", style="bold red")
             sys.exit(1)
 
         input_path = args.input
@@ -2718,15 +2724,15 @@ def main():
         hide_paths = args.hide_paths
 
         if not os.path.isfile(input_path):
-            print(f"{RED}❌ Error: File input '{input_path}' tidak ditemukan.{RESET}")
+            console.print(f"❌ Error: File input '{input_path}' tidak ditemukan.", style="bold red")
             sys.exit(1)
 
         if keyfile_path and not os.path.isfile(keyfile_path):
-             print(f"{RED}❌ Error: File keyfile '{keyfile_path}' tidak ditemukan.{RESET}")
+             console.print(f"❌ Error: File keyfile '{keyfile_path}' tidak ditemukan.", style="bold red")
              sys.exit(1)
 
         if not validate_password_keyfile(password, keyfile_path):
-            print(f"{RED}❌ Error: Validasi password/keyfile gagal.{RESET}")
+            console.print("❌ Error: Validasi password/keyfile gagal.", style="bold red")
             sys.exit(1)
 
         if not check_file_size_limit(input_path):
@@ -2735,61 +2741,60 @@ def main():
         # Validasi ekstensi untuk mode baris perintah
         if args.encrypt:
             if not output_path.endswith('.encrypted'):
-                print(f"{YELLOW}⚠️  Peringatan: Nama file output '{output_path}' tidak memiliki ekstensi '.encrypted'.{RESET}")
-                confirm = input(f"{YELLOW}Lanjutkan? (y/N): {RESET}").strip().lower()
+                console.print(f"⚠️  Peringatan: Nama file output '{output_path}' tidak memiliki ekstensi '.encrypted'.", style="yellow")
+                confirm = Prompt.ask("[yellow]Lanjutkan? (y/N):[/yellow]").strip().lower()
                 if confirm not in ['y', 'yes']:
-                    print(f"{YELLOW}Operasi dibatalkan.{RESET}")
+                    console.print("Operasi dibatalkan.", style="yellow")
                     sys.exit(0)
         elif args.decrypt:
             if not input_path.endswith('.encrypted'):
-                print(f"{YELLOW}⚠️  Peringatan: File input '{input_path}' tidak memiliki ekstensi '.encrypted'.{RESET}")
-                confirm = input(f"{YELLOW}Apakah ini file terenkripsi Thena_dev? (y/N): {RESET}").strip().lower()
+                console.print(f"⚠️  Peringatan: File input '{input_path}' tidak memiliki ekstensi '.encrypted'.", style="yellow")
+                confirm = Prompt.ask("[yellow]Apakah ini file terenkripsi Thena_dev? (y/N):[/yellow]").strip().lower()
                 if confirm not in ['y', 'yes']:
-                    print(f"{YELLOW}Operasi dibatalkan.{RESET}")
+                    console.print("Operasi dibatalkan.", style="yellow")
                     sys.exit(0)
 
         if args.encrypt:
-            if args.random_name or config.get("disable_timestamp_in_filename", False): # V8: Gunakan nama acak jika --random-name ATAU konfigurasi
-                 output_path = f"{int(time.time() * 1000)}{config.get('output_name_suffix', '')}.encrypted"
+            if args.random_name or config.get("disable_timestamp_in_filename", False):
+                output_path = f"{int(time.time() * 1000)}{config.get('output_name_suffix', '')}.encrypted"
             if CRYPTOGRAPHY_AVAILABLE:
                 master_key = load_or_create_master_key(password, keyfile_path)
                 if master_key is None:
-                    print(f"{RED}❌ Gagal mendapatkan Master Key.{RESET}")
+                    console.print("❌ Gagal mendapatkan Master Key.", style="bold red")
                     sys.exit(1)
                 encryption_success, created_output = encrypt_file_with_master_key(input_path, output_path, master_key, add_random_padding=add_padding, hide_paths=hide_paths)
             else:
                 encryption_success, created_output = encrypt_file_simple(input_path, output_path, password, keyfile_path, add_random_padding=add_padding, hide_paths=hide_paths)
             if encryption_success:
-                print(f"{GREEN}✅ Enkripsi selesai: {input_path} -> {created_output}{RESET}")
+                console.print(f"✅ Enkripsi selesai: {input_path} -> {created_output}", style="green")
             else:
-                print(f"{RED}❌ Enkripsi gagal.{RESET}")
+                console.print("❌ Enkripsi gagal.", style="bold red")
                 sys.exit(1)
         elif args.decrypt:
             if CRYPTOGRAPHY_AVAILABLE:
                 if not os.path.exists(config["master_key_file"]):
-                    print(f"{RED}❌ Error: File Master Key '{config['master_key_file']}' tidak ditemukan. Tidak dapat mendekripsi tanpanya.{RESET}")
+                    console.print(f"❌ Error: File Master Key '{config['master_key_file']}' tidak ditemukan. Tidak dapat mendekripsi tanpanya.", style="bold red")
                     sys.exit(1)
                 master_key = load_or_create_master_key(password, keyfile_path)
                 if master_key is None:
-                    print(f"{RED}❌ Gagal mendapatkan Master Key.{RESET}")
+                    console.print("❌ Gagal mendapatkan Master Key.", style="bold red")
                     sys.exit(1)
                 decryption_success, created_output = decrypt_file_with_master_key(input_path, output_path, master_key, hide_paths=hide_paths)
             else:
                 decryption_success, created_output = decrypt_file_simple(input_path, output_path, password, keyfile_path, hide_paths=hide_paths)
             if decryption_success:
-                print(f"{GREEN}✅ Dekripsi selesai: {input_path} -> {created_output}{RESET}")
+                console.print(f"✅ Dekripsi selesai: {input_path} -> {created_output}", style="green")
             else:
-                print(f"{RED}❌ Dekripsi gagal.{RESET}")
+                console.print("❌ Dekripsi gagal.", style="bold red")
                 sys.exit(1)
 
     else: # Mode Interaktif
         setup_logging()
         clear_screen()
-        # Hapus pesan watermark di awal mode interaktif
 
         while True:
             print_box(
-                f"THENADev SCRIPT V14",
+                f"THENADev SCRIPT V15",
                 [
                     "1. Enkripsi File",
                     "2. Dekripsi File",
@@ -2798,138 +2803,132 @@ def main():
                 width=80
             )
 
-            choice = input(f"\n{BOLD}Masukkan pilihan: {RESET}").strip()
+            choice = Prompt.ask("\n[bold]Masukkan pilihan[/bold]").strip()
 
             if choice in ['1', '2']:
                 is_encrypt = choice == '1'
                 mode_str = "enkripsi" if is_encrypt else "dekripsi"
-                input_path = input(f"{BOLD}Masukkan path file input (untuk {mode_str}): {RESET}").strip()
+                input_path = Prompt.ask(f"[bold]Masukkan path file input (untuk {mode_str})[/bold]").strip()
 
                 if not os.path.isfile(input_path):
-                    print("\n" + "─" * 50)
-                    print(f"{RED}❌ File input tidak ditemukan.{RESET}")
-                    print("─" * 50)
+                    console.print("\n" + "─" * 50)
+                    console.print("❌ File input tidak ditemukan.", style="bold red")
+                    console.print("─" * 50)
                     continue
 
                 if not check_file_size_limit(input_path):
                     continue
 
                 if is_encrypt:
-                    # V8: Gunakan nama acak jika konfigurasi disable_timestamp_in_filename adalah True
                     if config.get("disable_timestamp_in_filename", False):
                         output_path = f"{int(time.time() * 1000)}{config.get('output_name_suffix', '')}.encrypted"
                     else:
-                        output_path = f"{int(time.time() * 1000)}{config.get('output_name_suffix', '')}.encrypted" # Default tetap timestamp
+                        output_path = f"{int(time.time() * 1000)}{config.get('output_name_suffix', '')}.encrypted"
                 else:
-                    output_path = input(f"{BOLD}Masukkan nama file output (nama asli sebelum {mode_str}): {RESET}").strip()
+                    output_path = Prompt.ask(f"[bold]Masukkan nama file output (nama asli sebelum {mode_str})[/bold]").strip()
                     if not output_path:
-                        print("\n" + "─" * 50)
-                        print(f"{RED}❌ Nama file output tidak boleh kosong.{RESET}")
-                        print("─" * 50)
+                        console.print("\n" + "─" * 50)
+                        console.print("❌ Nama file output tidak boleh kosong.", style="bold red")
+                        console.print("─" * 50)
                         continue
                     if not confirm_overwrite(output_path):
                         continue
 
-                password = input(f"{BOLD}Masukkan kata sandi: {RESET}").strip()
+                password = Prompt.ask("[bold]Masukkan kata sandi[/bold]", password=True).strip()
                 if not password:
-                    print("\n" + "─" * 50)
-                    print(f"{RED}❌ Kata sandi tidak boleh kosong.{RESET}")
-                    print("─" * 50)
+                    console.print("\n" + "─" * 50)
+                    console.print("❌ Kata sandi tidak boleh kosong.", style="bold red")
+                    console.print("─" * 50)
                     continue
 
-                use_keyfile = input(f"{BOLD}Gunakan Keyfile? (y/N): {RESET}").strip().lower()
+                use_keyfile = Prompt.ask("[bold]Gunakan Keyfile? (y/N)[/bold]").strip().lower()
                 keyfile_path = None
                 if use_keyfile in ['y', 'yes']:
-                    keyfile_path = input(f"{BOLD}Masukkan path Keyfile: {RESET}").strip()
+                    keyfile_path = Prompt.ask("[bold]Masukkan path Keyfile[/bold]").strip()
                     if not os.path.isfile(keyfile_path):
-                        print("\n" + "─" * 50)
-                        print(f"{RED}❌ File keyfile tidak ditemukan.{RESET}")
-                        print("─" * 50)
+                        console.print("\n" + "─" * 50)
+                        console.print("❌ File keyfile tidak ditemukan.", style="bold red")
+                        console.print("─" * 50)
                         continue
 
                 if not validate_password_keyfile(password, keyfile_path):
                     continue
 
-                hide_paths_input = input(f"{BOLD}Sembunyikan path file di output layar? (y/N): {RESET}").strip().lower()
+                hide_paths_input = Prompt.ask("[bold]Sembunyikan path file di output layar? (y/N)[/bold]").strip().lower()
                 hide_paths = hide_paths_input in ['y', 'yes']
 
                 if is_encrypt:
-                    print("\n" + "─" * 50)
-                    print(f"{YELLOW}⚠️  Gunakan password dan keyfile yang SANGAT KUAT!{RESET}")
-                    print("─" * 50)
-                    add_pad = input(f"{BOLD}Tambahkan padding acak? (Y/n): {RESET}").strip().lower()
+                    console.print("\n" + "─" * 50)
+                    console.print("⚠️  Gunakan password dan keyfile yang SANGAT KUAT!", style="yellow")
+                    console.print("─" * 50)
+                    add_pad = Prompt.ask("[bold]Tambahkan padding acak? (Y/n)[/bold]").strip().lower()
                     add_padding = add_pad not in ['n', 'no']
                 else:
-                    add_padding = True # Padding tidak berpengaruh saat dekripsi
+                    add_padding = True
 
                 if CRYPTOGRAPHY_AVAILABLE:
                     master_key = load_or_create_master_key(password, keyfile_path)
                     if master_key is None:
-                        print(f"{RED}❌ Gagal mendapatkan Master Key. Operasi dibatalkan.{RESET}")
+                        console.print("❌ Gagal mendapatkan Master Key. Operasi dibatalkan.", style="bold red")
                         continue
                     if is_encrypt:
                         func = encrypt_file_with_master_key
-                        # Panggil fungsi dengan parameter add_random_padding
                         success, created_output = func(input_path, output_path, master_key, add_random_padding=add_padding, hide_paths=hide_paths)
                     else:
                         func = decrypt_file_with_master_key
-                        # Panggil fungsi *tanpa* parameter add_random_padding
                         success, created_output = func(input_path, output_path, master_key, hide_paths=hide_paths)
                 else:
                     if is_encrypt:
                         func = encrypt_file_simple
-                        # Panggil fungsi dengan parameter add_random_padding
                         success, created_output = func(input_path, output_path, password, keyfile_path, add_random_padding=add_padding, hide_paths=hide_paths)
                     else:
                         func = decrypt_file_simple
-                        # Panggil fungsi *tanpa* parameter add_random_padding
-                        success, created_output = func(input_path, output_path, password, keyfile_path, hide_paths=hide_paths) # <-- Baris ini yang diperbaiki
+                        success, created_output = func(input_path, output_path, password, keyfile_path, hide_paths=hide_paths)
 
                 if success:
                     if is_encrypt:
-                        delete_original = input(f"{BOLD}Hapus file asli secara AMAN setelah {mode_str}? (y/N): {RESET}").strip().lower()
+                        delete_original = Prompt.ask(f"[bold]Hapus file asli secara AMAN setelah {mode_str}? (y/N)[/bold]").strip().lower()
                         if delete_original in ['y', 'yes']:
                             secure_wipe_file(input_path)
                             if keyfile_path:
-                                delete_keyfile = input(f"{BOLD}Hapus keyfile '{keyfile_path}' secara AMAN juga? (y/N): {RESET}").strip().lower()
+                                delete_keyfile = Prompt.ask(f"[bold]Hapus keyfile '{keyfile_path}' secara AMAN juga? (y/N)[/bold]").strip().lower()
                                 if delete_keyfile in ['y', 'yes']:
                                     secure_wipe_file(keyfile_path)
                     else: # Dekripsi
-                        delete_encrypted = input(f"{BOLD}Hapus file ter{mode_str}ripsi secara AMAN setelah {mode_str}? (y/N): {RESET}").strip().lower()
+                        delete_encrypted = Prompt.ask(f"[bold]Hapus file ter{mode_str}ripsi secara AMAN setelah {mode_str}? (y/N)[/bold]").strip().lower()
                         if delete_encrypted in ['y', 'yes']:
                             secure_wipe_file(input_path)
                             if keyfile_path:
-                                delete_keyfile = input(f"{BOLD}Hapus keyfile '{keyfile_path}' secara AMAN juga? (y/N): {RESET}").strip().lower()
+                                delete_keyfile = Prompt.ask(f"[bold]Hapus keyfile '{keyfile_path}' secara AMAN juga? (y/N)[/bold]").strip().lower()
                                 if delete_keyfile in ['y', 'yes']:
                                     secure_wipe_file(keyfile_path)
 
             elif choice == '3':
-                print("\n" + "─" * 50)
-                print(f"{GREEN}✅ Keluar dari program V14.{RESET}")
-                print(f"{YELLOW}⚠️  Ingat:{RESET}")
-                print(f"{YELLOW}  - Simpan password Anda dengan aman.{RESET}")
+                console.print("\n" + "─" * 50)
+                console.print("✅ Keluar dari program V15.", style="green")
+                console.print("⚠️  Ingat:", style="yellow")
+                console.print("  - Simpan password Anda dengan aman.", style="yellow")
                 if CRYPTOGRAPHY_AVAILABLE:
-                    print(f"{YELLOW}  - Jaga keamanan file '{config['master_key_file']}' dan keyfile Anda.{RESET}")
+                    console.print(f"  - Jaga keamanan file '{config['master_key_file']}' dan keyfile Anda.", style="yellow")
                 else:
-                    print(f"{YELLOW}  - Jaga keamanan keyfile Anda.{RESET}")
-                print(f"{YELLOW}  - Cadangkan file penting Anda.{RESET}")
-                print(f"{YELLOW}  - Gunakan perangkat ini dengan bijak.{RESET}")
-                print("─" * 50)
-                logger.info(f"=== Encryptor V14 ({'With Advanced Features (cryptography)' if CRYPTOGRAPHY_AVAILABLE else 'Simple Mode (pycryptodome)'}) Selesai ===")
-                print("─" * 50)
+                    console.print("  - Jaga keamanan keyfile Anda.", style="yellow")
+                console.print("  - Cadangkan file penting Anda.", style="yellow")
+                console.print("  - Gunakan perangkat ini dengan bijak.", style="yellow")
+                console.print("─" * 50)
+                logger.info(f"=== Encryptor V15 ({'With Advanced Features (cryptography)' if CRYPTOGRAPHY_AVAILABLE else 'Simple Mode (pycryptodome)'}) Selesai ===")
+                console.print("─" * 50)
 
-                # --- V10: Hentikan Thread Integrity ---
                 if integrity_thread and config.get("enable_runtime_integrity", False):
                     stop_integrity_check.set()
-                    integrity_thread.join(timeout=5) # Tunggu maksimal 5 detik
+                    integrity_thread.join(timeout=5)
                     logger.info("Thread integrity checker dihentikan.")
                 sys.exit(0)
 
             else:
-                print("\n" + "─" * 50)
-                print(f"{RED}❌ Pilihan tidak valid. Silakan coba lagi.{RESET}")
+                console.print("\n" + "─" * 50)
+                console.print("❌ Pilihan tidak valid. Silakan coba lagi.", style="bold red")
                 logger.warning(f"Pilihan tidak valid dimasukkan: {choice}")
-                print("─" * 50)
+                console.print("─" * 50)
 
 if __name__ == "__main__":
     main()
