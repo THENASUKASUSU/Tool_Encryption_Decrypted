@@ -123,6 +123,12 @@ temp_files_created = set() # Set untuk file sementara (V9/V12/V13/V14)
 
 # --- Fungsi Cleanup Otomatis (V9/V12/V13/V14) ---
 def cleanup_temp_files():
+    """
+    Cleans up temporary files created during the execution of the script.
+
+    This function iterates over the global `temp_files_created` set and attempts to delete each file.
+    It logs the result of each deletion attempt.
+    """
     for temp_file in temp_files_created:
         try:
             os.unlink(temp_file)
@@ -136,7 +142,15 @@ atexit.register(cleanup_temp_files)
 
 # --- Fungsi Utilitas Hardening V14 ---
 def calculate_code_hash(func):
-    """Menghitung hash SHA-256 dari kode bytecode fungsi."""
+    """
+    Calculates the SHA-256 hash of a function's bytecode.
+
+    Args:
+        func (function): The function to hash.
+
+    Returns:
+        str: The hexadecimal SHA-256 hash of the function's bytecode, or an empty string if an error occurs.
+    """
     try:
         import dis
         bytecode = dis.Bytecode(func).dis()
@@ -147,7 +161,15 @@ def calculate_code_hash(func):
         return ""
 
 def register_critical_function(func):
-    """Mendaftarkan fungsi sebagai kritis untuk pemeriksaan integritas runtime."""
+    """
+    Registers a function as critical for runtime integrity checks.
+
+    This function calculates the hash of the function's bytecode and stores it in the global `integrity_hashes` dictionary.
+    The function is also added to the global `critical_functions` list.
+
+    Args:
+        func (function): The function to register.
+    """
     global critical_functions, integrity_hashes
     critical_functions.append(func)
     hash_val = calculate_code_hash(func)
@@ -158,7 +180,15 @@ def register_critical_function(func):
         logger.error(f"Gagal menghitung hash untuk fungsi kritis '{func.__name__}'. Tidak akan diperiksa.")
 
 def verify_integrity():
-    """Memverifikasi integritas kode fungsi-fungsi kritis."""
+    """
+    Verifies the integrity of the critical functions.
+
+    This function iterates over the `critical_functions` list and compares the current hash of each function's bytecode
+    with the stored hash in the `integrity_hashes` dictionary. If a mismatch is found, it logs a critical error and terminates the program.
+
+    Returns:
+        bool: True if the integrity check passes, False otherwise.
+    """
     for func in critical_functions:
         current_hash = calculate_code_hash(func)
         stored_hash = integrity_hashes.get(func.__name__)
@@ -173,7 +203,15 @@ def verify_integrity():
     return True
 
 def calculate_data_hash(data) -> str:
-    """Menghitung hash SHA-256 dari data dan mengembalikan hex string."""
+    """
+    Calculates the SHA-256 hash of the given data.
+
+    Args:
+        data (bytes, bytearray, str): The data to hash. If the data is a string, it will be encoded as UTF-8.
+
+    Returns:
+        str: The hexadecimal SHA-256 hash of the data, or an empty string if the data type is not supported.
+    """
     if isinstance(data, (bytes, bytearray, str)):
         if isinstance(data, str):
             data = data.encode('utf-8')
@@ -181,7 +219,15 @@ def calculate_data_hash(data) -> str:
     return ""
 
 def register_sensitive_data(name: str, data):
-    """Mendaftarkan data sensitif untuk pemeriksaan integritas runtime."""
+    """
+    Registers sensitive data for runtime integrity checks.
+
+    This function calculates the hash of the data and stores it in the global `integrity_data_hashes` dictionary.
+
+    Args:
+        name (str): The name to associate with the data.
+        data (bytes, bytearray, str): The sensitive data to register.
+    """
     global integrity_data_hashes
     hash_val = calculate_data_hash(data)
     if hash_val:
@@ -191,12 +237,24 @@ def register_sensitive_data(name: str, data):
         logger.warning(f"Gagal menghitung hash untuk data sensitif '{name}'.")
 
 def verify_data_integrity():
-    """Memverifikasi integritas data-data sensitif di memori."""
+    """
+    Verifies the integrity of the sensitive data.
+
+    This function is a placeholder for future implementation. It currently always returns True.
+
+    Returns:
+        bool: True.
+    """
     logger.debug("Runtime data integrity check called.")
     return True
 
 def integrity_checker(interval):
-    """Thread yang menjalankan pemeriksaan integritas fungsi dan data secara berkala."""
+    """
+    A thread that periodically runs integrity checks on functions and data.
+
+    Args:
+        interval (int): The interval in seconds between integrity checks.
+    """
     while not stop_integrity_check.wait(interval):
         if not verify_integrity():
             break
@@ -205,7 +263,12 @@ def integrity_checker(interval):
     logger.info("Thread integrity checker berhenti.")
 
 def check_pydevd():
-    """Memeriksa keberadaan modul pydevd (debugger PyCharm)."""
+    """
+    Checks for the presence of the pydevd debugger module.
+
+    Returns:
+        bool: True if the pydevd module is found, False otherwise.
+    """
     try:
         import pydevd
         return True
@@ -219,7 +282,14 @@ def check_pydevd():
     return False
 
 def check_ptrace():
-    """Memeriksa ptrace (Linux/Unix) - digunakan oleh debugger seperti gdb."""
+    """
+    Checks if the current process is being traced using ptrace.
+
+    This function is only applicable to Linux/Unix systems.
+
+    Returns:
+        bool: True if ptrace is detected, False otherwise.
+    """
     if platform.system() == "Windows": # Tidak berlaku untuk Windows
         return False
     try:
@@ -239,7 +309,15 @@ def check_ptrace():
     return False
 
 def detect_debugging():
-    """Fungsi utama untuk mendeteksi debugging."""
+    """
+    Detects if the script is being run in a debugging environment.
+
+    This function iterates through the debugging detection methods specified in the configuration
+    and terminates the program if a debugger is detected.
+
+    Returns:
+        bool: True if a debugger is detected, False otherwise.
+    """
     methods = config.get("debug_detection_methods", [])
     for method_name in methods:
         method_func = globals().get(method_name)
@@ -252,7 +330,15 @@ def detect_debugging():
     return False
 
 def secure_mlock(addr, length):
-    """Mengunci area memori agar tidak di-swap (jika platform mendukung)."""
+    """
+    Locks a memory area to prevent it from being swapped to disk.
+
+    This function is not supported on Windows.
+
+    Args:
+        addr (int): The memory address to lock.
+        length (int): The size of the memory area to lock.
+    """
     if platform.system() != "Windows": # Tidak berlaku untuk Windows
         try:
             libc = ctypes.CDLL(ctypes.util.find_library("c"))
@@ -267,7 +353,15 @@ def secure_mlock(addr, length):
         logger.info("mlock tidak didukung di Windows.")
 
 def secure_munlock(addr, length):
-    """Membuka kunci area memori (jika platform mendukung)."""
+    """
+    Unlocks a memory area, allowing it to be swapped to disk.
+
+    This function is not supported on Windows.
+
+    Args:
+        addr (int): The memory address to unlock.
+        length (int): The size of the memory area to unlock.
+    """
     if platform.system() != "Windows": # Tidak berlaku untuk Windows
         try:
             libc = ctypes.CDLL(ctypes.util.find_library("c"))
@@ -282,7 +376,16 @@ def secure_munlock(addr, length):
         logger.info("munlock tidak didukung di Windows.")
 
 def secure_memset(addr, length, value=0):
-    """Mengisi area memori secara aman (mencegah optimasi compiler)."""
+    """
+    Securely fills a memory area with a specific value.
+
+    This function is used to prevent compiler optimizations that might remove the memory overwrite.
+
+    Args:
+        addr (int): The memory address to fill.
+        length (int): The size of the memory area to fill.
+        value (int, optional): The value to fill the memory with. Defaults to 0.
+    """
     try:
         # Buat view memori yang bisa ditulis
         mem_view = (ctypes.c_char * length).from_address(addr)
@@ -293,7 +396,15 @@ def secure_memset(addr, length, value=0):
         logger.warning(f"Gagal mengisi memori secara aman di alamat {hex(addr)}: {e}")
 
 def secure_overwrite_variable(var):
-    """Mengisi variabel sensitif dengan nilai acak sebelum menghapusnya."""
+    """
+    Overwrites a sensitive variable with random data before deleting it.
+
+    This function attempts to securely overwrite the memory occupied by the variable.
+    It handles bytearray, bytes, and string types.
+
+    Args:
+        var (bytearray, bytes, str): The variable to overwrite.
+    """
     # Hanya bytearray dan bytes yang bisa ditimpa secara langsung di memori menggunakan ctypes
     if isinstance(var, bytearray):
         addr = ctypes.addressof((ctypes.c_char * len(var)).from_buffer(var))
@@ -312,7 +423,15 @@ def secure_overwrite_variable(var):
     gc.collect() # Paksa garbage collection
 
 def shuffle_file_parts(parts_list):
-    """Mengacak urutan bagian-bagian file output."""
+    """
+    Shuffles the order of the file parts if the 'custom_format_shuffle' option is enabled in the configuration.
+
+    Args:
+        parts_list (list): A list of tuples, where each tuple represents a part of the file.
+
+    Returns:
+        list: The shuffled list of file parts, or the original list if shuffling is disabled.
+    """
     if config.get("custom_format_shuffle", False):
         import random
         # Tambahkan informasi acak ke seed untuk keragaman setiap kali
@@ -325,8 +444,16 @@ def shuffle_file_parts(parts_list):
 
 def generate_dynamic_header_parts(input_file_path: str, data_size: int) -> list:
     """
-    Menghasilkan daftar bagian-bagian dinamis untuk header file berdasarkan path dan ukuran file.
-    Ini membuat struktur file output menjadi bervariasi.
+    Generates a list of dynamic header parts based on the input file path and data size.
+
+    This function adds a random number of optional metadata parts to the header, making the file structure more variable.
+
+    Args:
+        input_file_path (str): The path to the input file.
+        data_size (int): The size of the data.
+
+    Returns:
+        list: A list of tuples, where each tuple represents a dynamic header part.
     """
     # Misalnya, kita buat jumlah bagian acak berdasarkan ukuran file
     # atau kita acak urutan bagian-bagian yang *wajib* ada
@@ -349,10 +476,18 @@ def generate_dynamic_header_parts(input_file_path: str, data_size: int) -> list:
 
 def unshuffle_dynamic_header_parts(parts_list, input_file_path: str, data_size: int) -> dict:
     """
-    Mengembalikan urutan bagian-bagian header file dinamis ke urutan semula.
-    Implementasi ini mengasumsikan kita tahu ukuran tetap dari bagian-bagian yang dikenal,
-    dan kita mencari mereka berdasarkan ukuran dan posisi acak.
-    Ini adalah fungsi yang kompleks dan bisa ditingkatkan.
+    Restores the original order of the dynamic header parts.
+
+    This function is complex and could be improved. It assumes that the size of the known parts is fixed
+    and searches for them based on their size and random position.
+
+    Args:
+        parts_list (list): A list of tuples, where each tuple represents a part of the file.
+        input_file_path (str): The path to the input file.
+        data_size (int): The size of the data.
+
+    Returns:
+        dict: A dictionary containing the unshuffled header parts, or None if an error occurs.
     """
     # Kita kembalikan dictionary yang berisi bagian-bagian yang sudah dipisahkan.
     # Karena ukuran bisa bervariasi (karena bagian opsional), kita harus membaca
@@ -377,9 +512,16 @@ def unshuffle_dynamic_header_parts(parts_list, input_file_path: str, data_size: 
 
 def derive_key_from_master_key_for_header(master_key: bytes, input_file_path: str) -> bytes:
     """
-    Menurunkan kunci khusus dari Master Key untuk mengenkripsi header dinamis.
-    Menggunakan HKDF (dari cryptography jika tersedia).
-    Info HKDF menggunakan string konfigurasi dan hash dari path file input.
+    Derives a key from the master key to encrypt the dynamic header.
+
+    This function uses HKDF with a unique salt and info string derived from the input file path.
+
+    Args:
+        master_key (bytes): The master key.
+        input_file_path (str): The path to the input file.
+
+    Returns:
+        bytes: The derived key for the header, or a random key if an error occurs.
     """
     if not CRYPTOGRAPHY_AVAILABLE:
         print(f"{RED}❌ Error: HKDF (untuk header) memerlukan modul 'cryptography'.{RESET}")
@@ -411,7 +553,12 @@ def derive_key_from_master_key_for_header(master_key: bytes, input_file_path: st
 
 # --- Fungsi untuk Memuat Konfigurasi ---
 def load_config():
-    """Memuat konfigurasi dari file JSON, atau buat file dengan nilai default jika belum ada."""
+    """
+    Loads the configuration from a JSON file or creates a default configuration file if it doesn't exist.
+
+    Returns:
+        dict: A dictionary containing the configuration settings.
+    """
     # Nilai default ditingkatkan untuk keamanan dan fungsionalitas V14
     default_config = {
         "kdf_type": "argon2id", # Pilihan KDF: "argon2id", "scrypt", "pbkdf2" (menggunakan cryptography jika tersedia)
@@ -501,6 +648,12 @@ def load_config():
 
 # --- Setup Logging ---
 def setup_logging():
+    """
+    Sets up the logging for the script.
+
+    This function configures the logging to write to both a file and the console.
+    The log level is determined by the 'log_level' setting in the configuration.
+    """
     level = getattr(logging, config.get("log_level", "INFO").upper(), logging.INFO)
     logging.basicConfig(
         level=level,
@@ -532,6 +685,9 @@ else:
 
 # --- Fungsi Utilitas ---
 def clear_screen():
+    """
+    Clears the console screen.
+    """
     # Hardening (V8): Cek sistem operasi
     os_name = platform.system().lower()
     if os_name == "windows":
@@ -540,10 +696,25 @@ def clear_screen():
         os.system('clear')
 
 def calculate_checksum(data) -> bytes:
-    """Menghitung checksum SHA-256 dari data yang diberikan."""
+    """
+    Calculates the SHA-256 checksum of the given data.
+
+    Args:
+        data (bytes): The data to calculate the checksum for.
+
+    Returns:
+        bytes: The SHA-256 checksum.
+    """
     return hashlib.sha256(data).digest()
 
 def secure_wipe_file(file_path: str, passes: int = 5):
+    """
+    Securely wipes a file by overwriting it with random data multiple times before deleting it.
+
+    Args:
+        file_path (str): The path to the file to wipe.
+        passes (int, optional): The number of times to overwrite the file. Defaults to 5.
+    """
     if not os.path.exists(file_path):
         print(f"{YELLOW}⚠️  File '{file_path}' tidak ditemukan, dilewati.{RESET}")
         logger.warning(f"File '{file_path}' tidak ditemukan saat secure wipe.")
@@ -567,6 +738,15 @@ def secure_wipe_file(file_path: str, passes: int = 5):
     logger.info(f"File '{file_path}' dihapus secara aman ({passes} passes).")
 
 def confirm_overwrite(file_path: str) -> bool:
+    """
+    Asks the user for confirmation before overwriting a file.
+
+    Args:
+        file_path (str): The path to the file to be overwritten.
+
+    Returns:
+        bool: True if the user confirms, False otherwise.
+    """
     if os.path.exists(file_path):
         confirm = input(f"{YELLOW}File '{file_path}' sudah ada. Ganti? (y/N): {RESET}").strip().lower()
         if confirm not in ['y', 'yes']:
@@ -576,6 +756,16 @@ def confirm_overwrite(file_path: str) -> bool:
     return True
 
 def check_disk_space(file_path: str, output_dir: str) -> bool:
+    """
+    Checks if there is enough disk space to save the output file.
+
+    Args:
+        file_path (str): The path to the input file.
+        output_dir (str): The path to the output directory.
+
+    Returns:
+        bool: True if there is enough disk space, False otherwise.
+    """
     try:
         file_size = os.path.getsize(file_path)
         # Estimasi ukuran output: ukuran asli + overhead metadata + estimasi kompresi (jika diaktifkan)
@@ -603,6 +793,16 @@ def check_disk_space(file_path: str, output_dir: str) -> bool:
         return False
 
 def validate_password_keyfile(password: str, keyfile_path: str) -> bool:
+    """
+    Validates the strength of the password and the validity of the keyfile.
+
+    Args:
+        password (str): The password to validate.
+        keyfile_path (str): The path to the keyfile.
+
+    Returns:
+        bool: True if the validation passes, False otherwise.
+    """
     issues = []
 
     # Validasi password yang ditingkatkan
@@ -655,6 +855,15 @@ def validate_password_keyfile(password: str, keyfile_path: str) -> bool:
     return True
 
 def check_file_size_limit(file_path: str) -> bool:
+    """
+    Checks if the file size is within the configured limit.
+
+    Args:
+        file_path (str): The path to the file.
+
+    Returns:
+        bool: True if the file size is within the limit, False otherwise.
+    """
     max_size = config.get("max_file_size", 100 * 1024 * 1024) # 100MB default
     file_size = os.path.getsize(file_path)
     if file_size > max_size:
@@ -665,6 +874,15 @@ def check_file_size_limit(file_path: str) -> bool:
     return True
 
 def create_temp_file(suffix=""):
+    """
+    Creates a temporary file.
+
+    Args:
+        suffix (str, optional): The suffix for the temporary file. Defaults to "".
+
+    Returns:
+        str: The path to the temporary file, or None if temporary files are disabled.
+    """
     if not config.get("enable_temp_files", False):
         return None
     temp_dir = config.get("temp_dir", "./temp_thena")
@@ -676,6 +894,15 @@ def create_temp_file(suffix=""):
     return temp_path
 
 def obfuscate_memory(data) -> bytes:
+    """
+    Obfuscates data in memory using a simple XOR operation.
+
+    Args:
+        data (bytes): The data to obfuscate.
+
+    Returns:
+        bytes: The obfuscated data.
+    """
     if not config.get("enable_memory_obfuscation", False):
         return data
     obfuscation_key = config.get("memory_obfuscation_key", "")
@@ -691,14 +918,30 @@ def obfuscate_memory(data) -> bytes:
     return bytes(obfuscated_data)
 
 def deobfuscate_memory(data) -> bytes:
+    """
+    Deobfuscates data in memory using a simple XOR operation.
+
+    Args:
+        data (bytes): The data to deobfuscate.
+
+    Returns:
+        bytes: The deobfuscated data.
+    """
     # Deobfuskasi adalah operasi yang sama dengan XOR
     return obfuscate_memory(data)
 
 # --- Fungsi Derivasi Kunci Baru (V14 - Parameter KDF Ditingkatkan) ---
 def derive_key_from_password_and_keyfile_pbkdf2(password: str, salt: bytes, keyfile_path: str = None) -> bytes:
     """
-    Menurunkan kunci dari kombinasi password dan isi keyfile (jika ada)
-    menggunakan PBKDF2 (dari cryptography) dengan parameter V14.
+    Derives a key from a password and keyfile using PBKDF2.
+
+    Args:
+        password (str): The password.
+        salt (bytes): The salt.
+        keyfile_path (str, optional): The path to the keyfile. Defaults to None.
+
+    Returns:
+        bytes: The derived key, or None if an error occurs.
     """
     if not CRYPTOGRAPHY_AVAILABLE:
         print(f"{RED}❌ Error: PBKDF2 memerlukan modul 'cryptography'.{RESET}")
@@ -741,8 +984,15 @@ def derive_key_from_password_and_keyfile_pbkdf2(password: str, salt: bytes, keyf
 
 def derive_key_from_password_and_keyfile_scrypt(password: str, salt: bytes, keyfile_path: str = None) -> bytes:
     """
-    Menurunkan kunci dari kombinasi password dan isi keyfile (jika ada)
-    menggunakan Scrypt (dari cryptography) dengan parameter V14.
+    Derives a key from a password and keyfile using Scrypt.
+
+    Args:
+        password (str): The password.
+        salt (bytes): The salt.
+        keyfile_path (str, optional): The path to the keyfile. Defaults to None.
+
+    Returns:
+        bytes: The derived key, or None if an error occurs.
     """
     if not CRYPTOGRAPHY_AVAILABLE:
         print(f"{RED}❌ Error: Scrypt memerlukan modul 'cryptography'.{RESET}")
@@ -778,8 +1028,15 @@ def derive_key_from_password_and_keyfile_scrypt(password: str, salt: bytes, keyf
 
 def derive_key_from_password_and_keyfile_argon2(password: str, salt: bytes, keyfile_path: str = None) -> bytes:
     """
-    Menurunkan kunci dari kombinasi password dan isi keyfile (jika ada)
-    menggunakan Argon2id (dari argon2.low_level) dengan parameter V14.
+    Derives a key from a password and keyfile using Argon2id.
+
+    Args:
+        password (str): The password.
+        salt (bytes): The salt.
+        keyfile_path (str, optional): The path to the keyfile. Defaults to None.
+
+    Returns:
+        bytes: The derived key, or None if an error occurs.
     """
     # Kita tetap gunakan argon2.low_level karena lebih stabil dan tidak memerlukan cryptography untuk Argon2 sendiri
     if not ARGON2_AVAILABLE:
@@ -817,9 +1074,15 @@ def derive_key_from_password_and_keyfile_argon2(password: str, salt: bytes, keyf
 
 def derive_key_from_password_and_keyfile(password: str, salt: bytes, keyfile_path: str = None) -> bytes:
     """
-    Menurunkan kunci dari kombinasi password dan isi keyfile (jika ada).
-    Memilih KDF berdasarkan konfigurasi dan ketersediaan pustaka.
-    V14: Parameter KDF ditingkatkan.
+    Derives a key from a password and keyfile using the configured KDF.
+
+    Args:
+        password (str): The password.
+        salt (bytes): The salt.
+        keyfile_path (str, optional): The path to the keyfile. Defaults to None.
+
+    Returns:
+        bytes: The derived key, or None if an error occurs.
     """
     kdf_type = config.get("kdf_type", "argon2id").lower()
 
@@ -851,9 +1114,14 @@ def derive_key_from_password_and_keyfile(password: str, salt: bytes, keyfile_pat
 # --- Fungsi Derivasi Kunci File dengan HKDF (menggunakan cryptography jika tersedia) ---
 def derive_file_key_from_master_key(master_key: bytes, input_file_path: str) -> bytes:
     """
-    Menurunkan kunci file dari Master Key menggunakan HKDF (dari cryptography jika tersedia).
-    Info HKDF sekarang mencakup awalan dari konfigurasi dan hash dari path file input.
-    V14: Salt HKDF juga mencakup hash dari path file input untuk keunikan maksimum.
+    Derives a file key from the master key using HKDF.
+
+    Args:
+        master_key (bytes): The master key.
+        input_file_path (str): The path to the input file.
+
+    Returns:
+        bytes: The derived file key, or a random key if an error occurs.
     """
     if not CRYPTOGRAPHY_AVAILABLE:
         print(f"{RED}❌ Error: HKDF memerlukan modul 'cryptography'.{RESET}")
@@ -885,9 +1153,14 @@ def derive_file_key_from_master_key(master_key: bytes, input_file_path: str) -> 
 # --- Fungsi Derivasi Kunci HMAC dari Master Key (V8 - Fixed HMAC Derivation - V14: Konsisten & Lebih Aman) ---
 def derive_hmac_key_from_master_key(master_key: bytes, input_file_path: str) -> bytes:
     """
-    Menurunkan kunci HMAC dari Master Key menggunakan HKDF (dari cryptography jika tersedia).
-    Info HKDF menggunakan string konfigurasi dan hash dari path file input.
-    V14: Salt HKDF juga mencakup hash dari path file input.
+    Derives an HMAC key from the master key using HKDF.
+
+    Args:
+        master_key (bytes): The master key.
+        input_file_path (str): The path to the input file.
+
+    Returns:
+        bytes: The derived HMAC key, or a random key if an error occurs.
     """
     if not CRYPTOGRAPHY_AVAILABLE:
         print(f"{RED}❌ Error: HKDF (untuk HMAC) memerlukan modul 'cryptography'.{RESET}")
@@ -918,6 +1191,16 @@ def derive_hmac_key_from_master_key(master_key: bytes, input_file_path: str) -> 
 
 # --- Fungsi Master Key Management ---
 def load_or_create_master_key(password: str, keyfile_path: str):
+    """
+    Loads the master key from the master key file, or creates a new one if it doesn't exist.
+
+    Args:
+        password (str): The password.
+        keyfile_path (str): The path to the keyfile.
+
+    Returns:
+        bytes: The master key, or None if an error occurs.
+    """
     master_key = None
     if os.path.exists(config["master_key_file"]):
         print(f"{CYAN}Memuat Master Key dari '{config['master_key_file']}'...{RESET}")
@@ -968,7 +1251,15 @@ def load_or_create_master_key(password: str, keyfile_path: str):
 
 # --- Fungsi Utilitas Kompresi ---
 def compress_data(data) -> bytes:
-    """Mengompresi data menggunakan zlib."""
+    """
+    Compresses data using zlib.
+
+    Args:
+        data (bytes): The data to compress.
+
+    Returns:
+        bytes: The compressed data, or the original data if compression fails.
+    """
     compression_level = config.get("compression_level", 6)
     try:
         compressed_data = zlib.compress(data, level=compression_level)
@@ -980,7 +1271,15 @@ def compress_data(data) -> bytes:
         return data
 
 def decompress_data(data) -> bytes:
-    """Mendekompresi data menggunakan zlib."""
+    """
+    Decompresses data using zlib.
+
+    Args:
+        data (bytes): The data to decompress.
+
+    Returns:
+        bytes: The decompressed data, or the original data if decompression fails.
+    """
     try:
         decompressed_data = zlib.decompress(data)
         logger.debug(f"Data didekompresi dari {len(data)} bytes menjadi {len(decompressed_data)} bytes.")
@@ -992,6 +1291,20 @@ def decompress_data(data) -> bytes:
 
 # --- Fungsi Enkripsi/Dekripsi dengan Algoritma Pilihan (hanya AES-GCM untuk saat ini) ---
 def encrypt_file_simple(input_path: str, output_path: str, password: str, keyfile_path: str = None, add_random_padding: bool = True, hide_paths: bool = False):
+    """
+    Encrypts a file using a password and an optional keyfile.
+
+    Args:
+        input_path (str): The path to the input file.
+        output_path (str): The path to the output file.
+        password (str): The password.
+        keyfile_path (str, optional): The path to the keyfile. Defaults to None.
+        add_random_padding (bool, optional): Whether to add random padding. Defaults to True.
+        hide_paths (bool, optional): Whether to hide file paths in the output. Defaults to False.
+
+    Returns:
+        tuple: A tuple containing a boolean indicating success and the path to the output file.
+    """
     logger = logging.getLogger(__name__)
     start_time = time.time()
     output_dir = os.path.dirname(output_path) or "."
@@ -1262,6 +1575,19 @@ def encrypt_file_simple(input_path: str, output_path: str, password: str, keyfil
         return False, None
 
 def decrypt_file_simple(input_path: str, output_path: str, password: str, keyfile_path: str = None, hide_paths: bool = False): # <-- Hapus parameter add_random_padding
+    """
+    Decrypts a file using a password and an optional keyfile.
+
+    Args:
+        input_path (str): The path to the input file.
+        output_path (str): The path to the output file.
+        password (str): The password.
+        keyfile_path (str, optional): The path to the keyfile. Defaults to None.
+        hide_paths (bool, optional): Whether to hide file paths in the output. Defaults to False.
+
+    Returns:
+        tuple: A tuple containing a boolean indicating success and the path to the output file.
+    """
     logger = logging.getLogger(__name__)
     start_time = time.time()
 

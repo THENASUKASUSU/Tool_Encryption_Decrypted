@@ -3,7 +3,10 @@ import os
 import Thena_dev
 
 class TestThenaDevSimple(unittest.TestCase):
+    """Test case for simple encryption and decryption."""
+
     def setUp(self):
+        """Set up the test environment."""
         self.test_file = "test_file.txt"
         self.encrypted_file = "test_file.txt.encrypted"
         self.decrypted_file = "test_file.txt.decrypted"
@@ -11,6 +14,7 @@ class TestThenaDevSimple(unittest.TestCase):
             f.write("This is a test file for Thena_dev.py.")
 
     def tearDown(self):
+        """Clean up the test environment."""
         if os.path.exists(self.test_file):
             os.remove(self.test_file)
         if os.path.exists(self.encrypted_file):
@@ -21,6 +25,7 @@ class TestThenaDevSimple(unittest.TestCase):
             os.remove(".master_key_encrypted_v14")
 
     def test_encrypt_decrypt_simple(self):
+        """Test simple encryption and decryption of a file."""
         password = "Test_Password123!"
         Thena_dev.encrypt_file_simple(self.test_file, self.encrypted_file, password)
         Thena_dev.decrypt_file_simple(self.encrypted_file, self.decrypted_file, password)
@@ -31,7 +36,10 @@ class TestThenaDevSimple(unittest.TestCase):
         self.assertEqual(decrypted_content, original_content)
 
 class TestThenaDevMasterKey(unittest.TestCase):
+    """Test case for master key encryption and decryption."""
+
     def setUp(self):
+        """Set up the test environment."""
         self.test_file = "test_file.txt"
         self.encrypted_file = "test_file.txt.encrypted"
         self.decrypted_file = "test_file.txt.decrypted"
@@ -39,6 +47,7 @@ class TestThenaDevMasterKey(unittest.TestCase):
             f.write("This is a test file for Thena_dev.py.")
 
     def tearDown(self):
+        """Clean up the test environment."""
         if os.path.exists(self.test_file):
             os.remove(self.test_file)
         if os.path.exists(self.encrypted_file):
@@ -49,6 +58,7 @@ class TestThenaDevMasterKey(unittest.TestCase):
             os.remove(".master_key_encrypted_v14")
 
     def test_encrypt_decrypt_master_key(self):
+        """Test master key encryption and decryption of a file."""
         password = "Test_Password123!"
         master_key = Thena_dev.load_or_create_master_key(password, None)
         self.assertIsNotNone(master_key)
@@ -61,7 +71,10 @@ class TestThenaDevMasterKey(unittest.TestCase):
         self.assertEqual(decrypted_content, original_content)
 
 class TestThenaDevCLI(unittest.TestCase):
+    """Test case for the command-line interface."""
+
     def setUp(self):
+        """Set up the test environment."""
         self.test_file = "test_file.txt"
         self.encrypted_file = "test_file.txt.encrypted"
         self.decrypted_file = "test_file.txt.decrypted"
@@ -69,6 +82,7 @@ class TestThenaDevCLI(unittest.TestCase):
             f.write("This is a test file for Thena_dev.py CLI.")
 
     def tearDown(self):
+        """Clean up the test environment."""
         if os.path.exists(self.test_file):
             os.remove(self.test_file)
         if os.path.exists(self.encrypted_file):
@@ -79,6 +93,7 @@ class TestThenaDevCLI(unittest.TestCase):
             os.remove(".master_key_encrypted_v14")
 
     def test_cli_encrypt_decrypt(self):
+        """Test encryption and decryption using the CLI."""
         password = "Cli_Test_Password1!"
         # Test encryption
         encrypt_command = [
