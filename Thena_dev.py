@@ -2568,6 +2568,8 @@ def main():
                                 delete_keyfile = input(f"{BOLD}Hapus keyfile '{keyfile_path}' secara AMAN juga? (y/N): {RESET}").strip().lower()
                                 if delete_keyfile in ['y', 'yes']:
                                     secure_wipe_file(keyfile_path)
+                        input(f"\n{CYAN}Tekan Enter untuk kembali ke menu utama...{RESET}")
+                        clear_screen()
                     else: # Dekripsi
                         delete_encrypted = input(f"{BOLD}Hapus file ter{mode_str}ripsi secara AMAN setelah {mode_str}? (y/N): {RESET}").strip().lower()
                         if delete_encrypted in ['y', 'yes']:
@@ -2576,6 +2578,8 @@ def main():
                                 delete_keyfile = input(f"{BOLD}Hapus keyfile '{keyfile_path}' secara AMAN juga? (y/N): {RESET}").strip().lower()
                                 if delete_keyfile in ['y', 'yes']:
                                     secure_wipe_file(keyfile_path)
+                        input(f"\n{CYAN}Tekan Enter untuk kembali ke menu utama...{RESET}")
+                        clear_screen()
 
             elif choice == '3':
                 print("\n" + "─" * 50)
