@@ -334,18 +334,12 @@ def generate_dynamic_header_parts(input_file_path: str, data_size: int) -> list:
     import random
     # Acak seed berdasarkan path file dan ukuran
     random.seed(hash(input_file_path) + data_size)
-    mandatory_parts = [
-        ("nonce", secrets.token_bytes(config["gcm_nonce_len"])),
-        ("checksum", secrets.token_bytes(config["checksum_length"])), # Ini akan diisi dengan checksum asli nanti
-        ("hmac", secrets.token_bytes(config["hmac_key_length"])), # Ini akan diisi dengan HMAC asli nanti
-        ("padding_added", secrets.randbelow(config["chunk_size"]).to_bytes(config["padding_size_length"], byteorder='big')),
-    ]
     # Tambahkan bagian opsional dengan probabilitas
     optional_parts = [
         ("metadata_1", secrets.token_bytes(random.randint(1, 100))),
         ("metadata_2", secrets.token_bytes(random.randint(1, 50))),
     ]
-    final_parts = mandatory_parts[:]
+    final_parts = []
     for part_name, part_data in optional_parts:
         if random.random() > 0.5: # 50% probabilitas
             final_parts.append((part_name, part_data))
@@ -1123,10 +1117,7 @@ def encrypt_file_simple(input_path: str, output_path: str, password: str, keyfil
         # --- V8: Tambahkan HMAC untuk verifikasi tambahan (Fixed HMAC Derivation - V14: Konsisten & Lebih Aman) ---
         # Gunakan turunan dari Master Key (jika tersedia) atau kombinasi password/keyfile untuk HMAC
         # V14: Gunakan path file input untuk derivasi HMAC key dari Master Key
-        master_key_local = None
-        if CRYPTOGRAPHY_AVAILABLE:
-            master_key_local = load_or_create_master_key(password, keyfile_path)
-        hmac_key = derive_hmac_key_from_master_key(master_key_local, input_path) if CRYPTOGRAPHY_AVAILABLE and master_key_local else derive_key_from_password_and_keyfile(password, salt, keyfile_path)
+        hmac_key = derive_key_from_password_and_keyfile(password, salt, keyfile_path)
         if hmac_key is None:
              print(f"{RED}❌ Error: Gagal menurunkan kunci HMAC.{RESET}")
              logger.error(f"Gagal menurunkan kunci HMAC untuk {input_path}")
@@ -1177,34 +1168,19 @@ def encrypt_file_simple(input_path: str, output_path: str, password: str, keyfil
         shuffled_parts = shuffle_file_parts(final_parts_to_write)
 
         # --- V14: Dynamic Header Format (Meta Header) ---
-        # Kita buat header meta yang menjelaskan struktur file output
-        # Format: [versi_header_meta][jumlah_total_bagian][panjang_nama][nama_bagian_1][panjang_data_1][nama_bagian_2][panjang_data_2]...
-        # Kita encode nama bagian sebagai string null-terminated ASCII (maks 255 karakter).
         meta_header_version = config["dynamic_header_version"].to_bytes(2, byteorder='big') # 2 byte versi
-        num_total_parts = len(shuffled_parts).to_bytes(4, byteorder='big') # 4 byte jumlah bagian
-        meta_header_structure_info = meta_header_version + num_total_parts
+        num_total_parts_bytes = len(shuffled_parts).to_bytes(4, byteorder='big') # 4 byte jumlah bagian
+        meta_header_prefix = meta_header_version + num_total_parts_bytes
+
+        structure_payload = b''
         for part_name, part_data in shuffled_parts:
              part_name_bytes = part_name.encode('ascii').ljust(255, b'\x00') # Nama bagian (255 byte, null-terminated)
              part_size_bytes = len(part_data).to_bytes(4, byteorder='little') # Ukuran bagian (4 byte, little endian)
-             meta_header_structure_info += part_name_bytes + part_size_bytes
+             structure_payload += part_name_bytes + part_size_bytes
 
         # --- V14: Enkripsi Meta Header (opsional) ---
-        if config.get("custom_format_encrypt_header", False) and CRYPTOGRAPHY_AVAILABLE:
-             # Turunkan kunci untuk enkripsi meta header dari Master Key
-             header_enc_key = derive_key_from_master_key_for_header(master_key_local, input_path) # Gunakan turunan Master Key yang unik per file
-             if header_enc_key is None:
-                  print(f"{RED}❌ Error: Gagal menurunkan kunci untuk enkripsi meta header dari Master Key.{RESET}")
-                  logger.error(f"Gagal menurunkan kunci untuk enkripsi meta header dinamis dari Master Key untuk {input_path}")
-                  return False, None
-             header_nonce = secrets.token_bytes(config["gcm_nonce_len"])
-             header_cipher = AESGCM(header_enc_key)
-             encrypted_meta_header = header_cipher.encrypt(header_nonce, meta_header_structure_info, associated_data=None)
-             header_tag = b"" # Tag sudah termasuk jika cryptography
-             # Tulis nonce header dulu, lalu data terenkripsi
-             header_to_write = header_nonce + encrypted_meta_header
-        else:
-             # Jika header tidak dienkripsi, tulis langsung
-             header_to_write = meta_header_structure_info
+        # Jika header tidak dienkripsi, tulis langsung
+        header_to_write = meta_header_prefix + structure_payload
 
         total_output_size = len(header_to_write) + sum(len(part_data) for _, part_data in shuffled_parts)
 
@@ -1215,13 +1191,8 @@ def encrypt_file_simple(input_path: str, output_path: str, password: str, keyfil
                 pbar.update(len(header_to_write))
                 # Tulis bagian-bagian yang diacak
                 for part_name, part_data in shuffled_parts:
-                    # V14: Tulis nama bagian dan ukurannya sebelum datanya (format dinamis)
-                    part_name_padded = part_name.encode('ascii').ljust(4, b'\x00') # Nama bagian (4 byte)
-                    part_size_bytes = len(part_data).to_bytes(4, byteorder='little') # Ukuran bagian (4 byte)
-                    outfile.write(part_name_padded)
-                    outfile.write(part_size_bytes)
                     outfile.write(part_data) # Data bagian
-                    pbar.update(4 + 4 + len(part_data)) # Update progress dengan ukuran header + data
+                    pbar.update(len(part_data)) # Update progress dengan ukuran header + data
                     logger.debug(f"Menulis bagian '{part_name}' ({len(part_data)} bytes) ke file output.")
 
         output_size = os.path.getsize(output_path)
@@ -1344,6 +1315,8 @@ def decrypt_file_simple(input_path: str, output_path: str, password: str, keyfil
         input_size_log = os.path.getsize(input_path)
         logger.info(f"Ukuran file input: {input_size_log} bytes")
 
+        file_structure = []
+        parts_read = {}
         with open(input_path, 'rb') as infile:
             # --- V14: Baca Dynamic Meta Header ---
             meta_header_size = 2 + 4 # Versi (2) + Jumlah Bagian (4)
@@ -1359,76 +1332,40 @@ def decrypt_file_simple(input_path: str, output_path: str, password: str, keyfil
             logger.debug(f"Meta header dinamis dibaca: Versi={version}, Num_Total_Parts={num_total_parts}")
 
             # --- V14: Dekripsi Meta Header (jika dienkripsi) ---
-            if config.get("custom_format_encrypt_header", False) and CRYPTOGRAPHY_AVAILABLE:
-                 # Baca nonce meta header
-                 meta_header_nonce = infile.read(config["gcm_nonce_len"])
-                 if len(meta_header_nonce) != config["gcm_nonce_len"]:
-                      print(f"{RED}❌ Error: File input rusak (nonce meta header dinamis tidak ditemukan).{RESET}")
-                      logger.error(f"Nonce meta header dinamis tidak ditemukan atau tidak valid di {input_path}")
+            # Jika meta header tidak dienkripsi, baca sisa bagian struktur dari file
+            # Jumlah byte yang tersisa dalam bagian header sebelum data adalah: (255 + 4) * num_total_parts
+            remaining_meta_header_size = (255 + 4) * num_total_parts
+            decrypted_meta_header_structure_info = infile.read(remaining_meta_header_size)
+            if len(decrypted_meta_header_structure_info) != remaining_meta_header_size:
+                    print(f"{RED}❌ Error: File input rusak (info struktur meta header dinamis tidak lengkap).{RESET}")
+                    logger.error(f"Info struktur meta header dinamis tidak lengkap di {input_path}")
+                    return False, None
+            logger.debug(f"Meta header dinamis tidak dienkripsi, membaca info struktur langsung.")
+
+
+            # --- V14: Parse Info Struktur dari Meta Header ---
+            structure_info_idx = 0
+            file_structure = []
+            for _ in range(num_total_parts):
+                 part_name_padded_bytes = decrypted_meta_header_structure_info[structure_info_idx : structure_info_idx + 255]
+                 structure_info_idx += 255
+                 part_name = part_name_padded_bytes.decode('ascii').strip('\x00')
+                 part_size_bytes = decrypted_meta_header_structure_info[structure_info_idx : structure_info_idx + 4]
+                 structure_info_idx += 4
+                 part_size = int.from_bytes(part_size_bytes, byteorder='little')
+                 file_structure.append((part_name, part_size))
+                 logger.debug(f"Struktur file: Bagian '{part_name}', Ukuran: {part_size} bytes")
+
+
+            # --- V14: Baca Bagian-Bagian Berdasarkan Struktur ---
+            for part_name, part_size in file_structure:
+                 part_data = infile.read(part_size)
+                 if len(part_data) != part_size:
+                      print(f"{RED}❌ Error: File input rusak (data bagian '{part_name}' tidak lengkap).{RESET}")
+                      logger.error(f"Data bagian '{part_name}' tidak lengkap di {input_path}")
                       return False, None
-
-                 # Baca panjang data meta header terenkripsi (kita tahu ukurannya dari header yang tidak dienkripsi)
-                 # Kita baca sisa bagian header (nama dan ukuran bagian) secara dinamis
-                 # Jumlah byte yang tersisa dalam bagian header sebelum data adalah: (255 + 4) * num_total_parts
-                 encrypted_meta_header_remaining_size = (255 + 4) * num_total_parts
-                 encrypted_meta_header_data = infile.read(encrypted_meta_header_remaining_size)
-                 if len(encrypted_meta_header_data) != encrypted_meta_header_remaining_size:
-                      print(f"{RED}❌ Error: File input rusak (data meta header dinamis tidak lengkap).{RESET}")
-                      logger.error(f"Data meta header dinamis tidak lengkap di {input_path}")
-                      return False, None
-
-                 # Turunkan kunci untuk dekripsi meta header (harus sama dengan saat enkripsi)
-                 master_key_local = load_or_create_master_key(password, keyfile_path)
-                 header_dec_key = derive_key_from_master_key_for_header(master_key_local, input_path) # Gunakan turunan Master Key yang unik per file
-                 if header_dec_key is None:
-                      print(f"{RED}❌ Error: Gagal menurunkan kunci untuk dekripsi meta header dari Master Key.{RESET}")
-                      logger.error(f"Gagal menurunkan kunci untuk dekripsi meta header dinamis dari Master Key untuk {input_path}")
-                      return False, None
-                 header_cipher = AESGCM(header_dec_key)
-                 try:
-                     decrypted_meta_header_structure_info = header_cipher.decrypt(meta_header_nonce, encrypted_meta_header_data, associated_data=None)
-                     # Sekarang kita memiliki info struktur file asli yang didekripsi
-                     logger.debug(f"Meta header dinamis berhasil didekripsi.")
-                 except Exception as e:
-                     print(f"{RED}❌ Error: Gagal mendekripsi meta header dinamis.{RESET}")
-                     logger.error(f"Gagal mendekripsi meta header dinamis untuk {input_path}: {e}")
-                     return False, None
-            else:
-                # Jika meta header tidak dienkripsi, baca sisa bagian struktur dari file
-                # Jumlah byte yang tersisa dalam bagian header sebelum data adalah: (255 + 4) * num_total_parts
-                remaining_meta_header_size = (255 + 4) * num_total_parts
-                decrypted_meta_header_structure_info = infile.read(remaining_meta_header_size)
-                if len(decrypted_meta_header_structure_info) != remaining_meta_header_size:
-                     print(f"{RED}❌ Error: File input rusak (info struktur meta header dinamis tidak lengkap).{RESET}")
-                     logger.error(f"Info struktur meta header dinamis tidak lengkap di {input_path}")
-                     return False, None
-                logger.debug(f"Meta header dinamis tidak dienkripsi, membaca info struktur langsung.")
-
-
-        # --- V14: Parse Info Struktur dari Meta Header ---
-        structure_info_idx = 0
-        file_structure = []
-        for _ in range(num_total_parts):
-             part_name_padded_bytes = decrypted_meta_header_structure_info[structure_info_idx : structure_info_idx + 255]
-             structure_info_idx += 255
-             part_name = part_name_padded_bytes.decode('ascii').strip('\x00')
-             part_size_bytes = decrypted_meta_header_structure_info[structure_info_idx : structure_info_idx + 4]
-             structure_info_idx += 4
-             part_size = int.from_bytes(part_size_bytes, byteorder='little')
-             file_structure.append((part_name, part_size))
-             logger.debug(f"Struktur file: Bagian '{part_name}', Ukuran: {part_size} bytes")
-
-
-        # --- V14: Baca Bagian-Bagian Berdasarkan Struktur ---
-        parts_read = {}
-        for part_name, part_size in file_structure:
-             part_data = infile.read(part_size)
-             if len(part_data) != part_size:
-                  print(f"{RED}❌ Error: File input rusak (data bagian '{part_name}' tidak lengkap).{RESET}")
-                  logger.error(f"Data bagian '{part_name}' tidak lengkap di {input_path}")
-                  return False, None
-             parts_read[part_name] = part_data
-             logger.debug(f"Bagian '{part_name}' ({part_size} bytes) dibaca dari file input.")
+                 parts_read[part_name] = part_data
+                 logger.debug(f"Bagian '{part_name}' ({part_size} bytes) dibaca dari file input.")
 
 
         # Ambil bagian-bagian yang diperlukan
@@ -1465,10 +1402,7 @@ def decrypt_file_simple(input_path: str, output_path: str, password: str, keyfil
         # --- V8: Verifikasi HMAC (Fixed HMAC Derivation - V14: Konsisten & Lebih Aman) ---
         # Gunakan turunan dari Master Key (jika tersedia) atau kombinasi password/keyfile untuk HMAC
         # V14: Gunakan path file input untuk derivasi HMAC key dari Master Key
-        master_key_local = None
-        if CRYPTOGRAPHY_AVAILABLE:
-            master_key_local = load_or_create_master_key(password, keyfile_path)
-        hmac_key = derive_hmac_key_from_master_key(master_key_local, input_path) if CRYPTOGRAPHY_AVAILABLE and master_key_local else derive_key_from_password_and_keyfile(password, salt, keyfile_path)
+        hmac_key = derive_key_from_password_and_keyfile(password, salt, keyfile_path)
         if hmac_key is None:
              print(f"{RED}❌ Error: Gagal menurunkan kunci HMAC.{RESET}")
              logger.error(f"Gagal menurunkan kunci HMAC untuk {input_path}")
@@ -1733,7 +1667,7 @@ def encrypt_file_with_master_key(input_path: str, output_path: str, master_key: 
 
         # --- V8: Tambahkan HMAC untuk verifikasi tambahan (Fixed HMAC Derivation - V14: Konsisten & Lebih Aman) ---
         # Gunakan turunan dari Master Key untuk HMAC (V14: Salt HKDF unik)
-        hmac_key = derive_hmac_key_from_master_key(master_key, input_path) # Gunakan path file input untuk derivasi HMAC
+        hmac_key = derive_hmac_key_from_master_key(master_key, output_path) # Gunakan path file input untuk derivasi HMAC
         if hmac_key is None:
              print(f"{RED}❌ Error: Gagal menurunkan kunci HMAC dari Master Key.{RESET}")
              logger.error(f"Gagal menurunkan kunci HMAC dari Master Key untuk {input_path}")
@@ -1797,22 +1731,7 @@ def encrypt_file_with_master_key(input_path: str, output_path: str, master_key: 
              meta_header_structure_info += part_name_bytes + part_size_bytes
 
         # --- V14: Enkripsi Meta Header (opsional) ---
-        if config.get("custom_format_encrypt_header", False) and CRYPTOGRAPHY_AVAILABLE:
-             # Turunkan kunci untuk enkripsi meta header dari Master Key
-             header_enc_key = derive_key_from_master_key_for_header(master_key, input_path) # Gunakan turunan Master Key yang unik per file
-             if header_enc_key is None:
-                  print(f"{RED}❌ Error: Gagal menurunkan kunci untuk enkripsi meta header dari Master Key.{RESET}")
-                  logger.error(f"Gagal menurunkan kunci untuk enkripsi meta header dinamis dari Master Key untuk {input_path}")
-                  return False, None
-             header_nonce = secrets.token_bytes(config["gcm_nonce_len"])
-             header_cipher = AESGCM(header_enc_key)
-             encrypted_meta_header = header_cipher.encrypt(header_nonce, meta_header_structure_info, associated_data=None)
-             header_tag = b"" # Tag sudah termasuk jika cryptography
-             # Tulis nonce header dulu, lalu data terenkripsi
-             header_to_write = header_nonce + encrypted_meta_header
-        else:
-             # Jika header tidak dienkripsi, tulis langsung
-             header_to_write = meta_header_structure_info
+        header_to_write = meta_header_structure_info
 
         total_output_size = len(header_to_write) + sum(len(part_data) for _, part_data in shuffled_parts)
 
@@ -1823,13 +1742,8 @@ def encrypt_file_with_master_key(input_path: str, output_path: str, master_key: 
                 pbar.update(len(header_to_write))
                 # Tulis bagian-bagian yang diacak
                 for part_name, part_data in shuffled_parts:
-                    # V14: Tulis nama bagian dan ukurannya sebelum datanya (format dinamis)
-                    part_name_padded = part_name.encode('ascii').ljust(4, b'\x00') # Nama bagian (4 byte)
-                    part_size_bytes = len(part_data).to_bytes(4, byteorder='little') # Ukuran bagian (4 byte)
-                    outfile.write(part_name_padded)
-                    outfile.write(part_size_bytes)
                     outfile.write(part_data) # Data bagian
-                    pbar.update(4 + 4 + len(part_data)) # Update progress dengan ukuran header + data
+                    pbar.update(len(part_data)) # Update progress dengan ukuran header + data
                     logger.debug(f"Menulis bagian '{part_name}' ({len(part_data)} bytes) ke file output.")
 
         output_size = os.path.getsize(output_path)
@@ -1954,6 +1868,8 @@ def decrypt_file_with_master_key(input_path: str, output_path: str, master_key: 
         input_size_log = os.path.getsize(input_path)
         logger.info(f"Ukuran file input: {input_size_log} bytes")
 
+        file_structure = []
+        parts_read = {}
         with open(input_path, 'rb') as infile:
             # --- V14: Baca Dynamic Meta Header ---
             meta_header_size = 2 + 4 # Versi (2) + Jumlah Bagian (4)
@@ -1969,75 +1885,41 @@ def decrypt_file_with_master_key(input_path: str, output_path: str, master_key: 
             logger.debug(f"Meta header dinamis dibaca: Versi={version}, Num_Total_Parts={num_total_parts}")
 
             # --- V14: Dekripsi Meta Header (jika dienkripsi) ---
-            if config.get("custom_format_encrypt_header", False) and CRYPTOGRAPHY_AVAILABLE:
-                 # Baca nonce meta header
-                 meta_header_nonce = infile.read(config["gcm_nonce_len"])
-                 if len(meta_header_nonce) != config["gcm_nonce_len"]:
-                      print(f"{RED}❌ Error: File input rusak (nonce meta header dinamis tidak ditemukan).{RESET}")
-                      logger.error(f"Nonce meta header dinamis tidak ditemukan atau tidak valid di {input_path}")
+            # Jika header tidak dienkripsi, baca sisa bagian struktur dari file
+            # Jumlah byte yang tersisa dalam bagian header sebelum data adalah: (255 + 4) * num_total_parts
+            remaining_meta_header_size = (255 + 4) * num_total_parts
+            decrypted_meta_header_structure_info = infile.read(remaining_meta_header_size)
+            if len(decrypted_meta_header_structure_info) != remaining_meta_header_size:
+                 print(f"{RED}❌ Error: File input rusak (info struktur meta header dinamis tidak lengkap).{RESET}")
+                 logger.error(f"Info struktur meta header dinamis tidak lengkap di {input_path}")
+                 return False, None
+            logger.debug(f"Meta header dinamis tidak dienkripsi, membaca info struktur langsung.")
+
+
+            # --- V14: Parse Info Struktur dari Meta Header ---
+            structure_info_idx = 0
+            file_structure = []
+            for _ in range(num_total_parts):
+                 part_name_padded_bytes = decrypted_meta_header_structure_info[structure_info_idx : structure_info_idx + 255]
+                 structure_info_idx += 255
+                 part_name = part_name_padded_bytes.decode('ascii').strip('\x00')
+                 part_size_bytes = decrypted_meta_header_structure_info[structure_info_idx : structure_info_idx + 4]
+                 structure_info_idx += 4
+                 part_size = int.from_bytes(part_size_bytes, byteorder='little')
+                 file_structure.append((part_name, part_size))
+                 logger.debug(f"Struktur file: Bagian '{part_name}', Ukuran: {part_size} bytes")
+
+
+            # --- V14: Baca Bagian-Bagian Berdasarkan Struktur ---
+            parts_read = {}
+            for part_name, part_size in file_structure:
+                 part_data = infile.read(part_size)
+                 if len(part_data) != part_size:
+                      print(f"{RED}❌ Error: File input rusak (data bagian '{part_name}' tidak lengkap).{RESET}")
+                      logger.error(f"Data bagian '{part_name}' tidak lengkap di {input_path}")
                       return False, None
-
-                 # Baca panjang data meta header terenkripsi (kita tahu ukurannya dari header yang tidak dienkripsi)
-                 # Kita baca sisa bagian header (nama dan ukuran bagian) secara dinamis
-                 # Jumlah byte yang tersisa dalam bagian header sebelum data adalah: (255 + 4) * num_total_parts
-                 encrypted_meta_header_remaining_size = (255 + 4) * num_total_parts
-                 encrypted_meta_header_data = infile.read(encrypted_meta_header_remaining_size)
-                 if len(encrypted_meta_header_data) != encrypted_meta_header_remaining_size:
-                      print(f"{RED}❌ Error: File input rusak (data meta header dinamis tidak lengkap).{RESET}")
-                      logger.error(f"Data meta header dinamis tidak lengkap di {input_path}")
-                      return False, None
-
-                 # Turunkan kunci untuk dekripsi meta header (harus sama dengan saat enkripsi)
-                 header_dec_key = derive_key_from_master_key_for_header(master_key, input_path) # Gunakan turunan Master Key yang unik per file
-                 if header_dec_key is None:
-                      print(f"{RED}❌ Error: Gagal menurunkan kunci untuk dekripsi meta header dari Master Key.{RESET}")
-                      logger.error(f"Gagal menurunkan kunci untuk dekripsi meta header dinamis dari Master Key untuk {input_path}")
-                      return False, None
-                 header_cipher = AESGCM(header_dec_key)
-                 try:
-                     decrypted_meta_header_structure_info = header_cipher.decrypt(meta_header_nonce, encrypted_meta_header_data, associated_data=None)
-                     # Sekarang kita memiliki info struktur file asli yang didekripsi
-                     logger.debug(f"Meta header dinamis berhasil didekripsi.")
-                 except Exception as e:
-                     print(f"{RED}❌ Error: Gagal mendekripsi meta header dinamis.{RESET}")
-                     logger.error(f"Gagal mendekripsi meta header dinamis untuk {input_path}: {e}")
-                     return False, None
-            else:
-                # Jika meta header tidak dienkripsi, baca sisa bagian struktur dari file
-                # Jumlah byte yang tersisa dalam bagian header sebelum data adalah: (255 + 4) * num_total_parts
-                remaining_meta_header_size = (255 + 4) * num_total_parts
-                decrypted_meta_header_structure_info = infile.read(remaining_meta_header_size)
-                if len(decrypted_meta_header_structure_info) != remaining_meta_header_size:
-                     print(f"{RED}❌ Error: File input rusak (info struktur meta header dinamis tidak lengkap).{RESET}")
-                     logger.error(f"Info struktur meta header dinamis tidak lengkap di {input_path}")
-                     return False, None
-                logger.debug(f"Meta header dinamis tidak dienkripsi, membaca info struktur langsung.")
-
-
-        # --- V14: Parse Info Struktur dari Meta Header ---
-        structure_info_idx = 0
-        file_structure = []
-        for _ in range(num_total_parts):
-             part_name_padded_bytes = decrypted_meta_header_structure_info[structure_info_idx : structure_info_idx + 255]
-             structure_info_idx += 255
-             part_name = part_name_padded_bytes.decode('ascii').strip('\x00')
-             part_size_bytes = decrypted_meta_header_structure_info[structure_info_idx : structure_info_idx + 4]
-             structure_info_idx += 4
-             part_size = int.from_bytes(part_size_bytes, byteorder='little')
-             file_structure.append((part_name, part_size))
-             logger.debug(f"Struktur file: Bagian '{part_name}', Ukuran: {part_size} bytes")
-
-
-        # --- V14: Baca Bagian-Bagian Berdasarkan Struktur ---
-        parts_read = {}
-        for part_name, part_size in file_structure:
-             part_data = infile.read(part_size)
-             if len(part_data) != part_size:
-                  print(f"{RED}❌ Error: File input rusak (data bagian '{part_name}' tidak lengkap).{RESET}")
-                  logger.error(f"Data bagian '{part_name}' tidak lengkap di {input_path}")
-                  return False, None
-             parts_read[part_name] = part_data
-             logger.debug(f"Bagian '{part_name}' ({part_size} bytes) dibaca dari file input.")
+                 parts_read[part_name] = part_data
+                 logger.debug(f"Bagian '{part_name}' ({part_size} bytes) dibaca dari file input.")
 
 
         # Ambil bagian-bagian yang diperlukan
