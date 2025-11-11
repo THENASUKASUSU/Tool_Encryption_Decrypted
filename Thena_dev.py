@@ -2558,6 +2558,9 @@ def main():
                 sys.exit(1)
         elif args.decrypt:
             if CRYPTOGRAPHY_AVAILABLE:
+                if not os.path.exists(config["master_key_file"]):
+                    print(f"{RED}❌ Error: File Master Key '{config['master_key_file']}' tidak ditemukan. Tidak dapat mendekripsi tanpanya.{RESET}")
+                    sys.exit(1)
                 master_key = load_or_create_master_key(password, keyfile_path)
                 if master_key is None:
                     print(f"{RED}❌ Gagal mendapatkan Master Key.{RESET}")
