@@ -463,15 +463,24 @@ def generate_dynamic_header_parts(input_file_path: str, data_size: int) -> list:
     # atau kita tambahkan bagian-bagian opsional dengan probabilitas tertentu
     import random
     # Acak seed berdasarkan path file dan ukuran
-    random.seed(hash(input_file_path) + data_size)
+    random.seed(secrets.randbits(256)) # Use a much stronger, non-deterministic seed
     # Tambahkan bagian opsional dengan probabilitas
     optional_parts = [
-        ("metadata_1", secrets.token_bytes(random.randint(1, 100))),
-        ("metadata_2", secrets.token_bytes(random.randint(1, 50))),
+        ("dummy_block_1", secrets.token_bytes(random.randint(64, 512))),
+        ("dummy_block_2", secrets.token_bytes(random.randint(32, 256))),
+        ("dummy_block_3", secrets.token_bytes(random.randint(16, 128))),
+        ("dummy_block_4", secrets.token_bytes(random.randint(8, 64))),
+        ("random_noise_a", secrets.token_bytes(random.randint(128, 1024))),
+        ("random_noise_b", secrets.token_bytes(random.randint(1, 32))),
     ]
     final_parts = []
-    for part_name, part_data in optional_parts:
-        if random.random() > 0.5: # 50% probabilitas
+    # Include a random number of parts, from 1 up to all of them
+    num_parts_to_include = random.randint(1, len(optional_parts))
+    parts_to_include = random.sample(optional_parts, num_parts_to_include)
+
+    for part_name, part_data in parts_to_include:
+        # Each part now has an independent 85% chance of being included
+        if random.random() > 0.15:
             final_parts.append((part_name, part_data))
 
     logger.debug(f"Header dinamis dibuat dengan {len(final_parts)} bagian untuk {input_file_path}.")
@@ -501,7 +510,10 @@ def unshuffle_dynamic_header_parts(parts_list, input_file_path: str, data_size: 
     while idx < len(parts_list):
          part_name_len_bytes = parts_list[idx : idx + 4]
          idx += 4
-         part_name = part_name_len_bytes.decode('ascii').strip('\x00')
+         try:
+            part_name = part_name_len_bytes.decode('utf-8').strip('\x00')
+         except UnicodeDecodeError:
+            part_name = part_name_len_bytes.decode('latin-1').strip('\x00')
          part_size_bytes = parts_list[idx : idx + 4]
          idx += 4
          part_size = int.from_bytes(part_size_bytes, byteorder='little')
@@ -565,17 +577,17 @@ def load_config():
     Returns:
         A dictionary containing the configuration.
     """
-    # Nilai default ditingkatkan untuk keamanan dan fungsionalitas V15
+    # Nilai default ditingkatkan untuk keamanan dan fungsionalitas V17
     default_config = {
         "kdf_type": "argon2id", # Pilihan KDF: "argon2id", "scrypt", "pbkdf2" (menggunakan cryptography jika tersedia)
         "encryption_algorithm": "aes-gcm", # Pilihan Algoritma: "aes-gcm", "chacha20-poly1305"
-        "argon2_time_cost": 25, # V15: Ditingkatkan
-        "argon2_memory_cost": 2**21, # V15: Ditingkatkan (2048MB)
-        "argon2_parallelism": 4, # V15: Ditingkatkan
-        "scrypt_n": 2**21, # V15: Ditingkatkan
+        "argon2_time_cost": 25, # V17: Ditingkatkan
+        "argon2_memory_cost": 2**21, # V17: Ditingkatkan (2048MB)
+        "argon2_parallelism": 4, # V17: Ditingkatkan
+        "scrypt_n": 2**21, # V17: Ditingkatkan
         "scrypt_r": 8,
         "scrypt_p": 1,
-        "pbkdf2_iterations": 200000, # V15: Ditingkatkan
+        "pbkdf2_iterations": 200000, # V17: Ditingkatkan
         "pbkdf2_hash_algorithm": "sha256", # Algoritma hash untuk PBKDF2
         "chunk_size": 64 * 1024,
         "master_key_file": ".master_key_encrypted", # Ubah nama file master key
@@ -626,6 +638,7 @@ def load_config():
         "enable_runtime_data_integrity": False, # v14: Aktifkan pemeriksaan integritas data di memori
         "custom_format_variable_parts": True, # v14: Aktifkan struktur bagian file yang bervariasi
         "header_derivation_info": "thena_header_enc_key_", # v14: Info string untuk derivasi kunci header
+        "custom_format_encrypt_header": True,
     }
 
     config_path = Path(CONFIG_FILE)
@@ -637,18 +650,18 @@ def load_config():
             for key, value in default_config.items():
                 if key not in config:
                     config[key] = value
-            print(f"{CYAN}Konfigurasi V15 dimuat dari {CONFIG_FILE}{RESET}")
+            print(f"{CYAN}Konfigurasi V17 dimuat dari {CONFIG_FILE}{RESET}")
         except json.JSONDecodeError:
-            print(f"{RED}Error membaca {CONFIG_FILE}, menggunakan nilai default V15.{RESET}")
+            print(f"{RED}Error membaca {CONFIG_FILE}, menggunakan nilai default V17.{RESET}")
             config = default_config
     else:
         config = default_config
         try:
             with open(config_path, 'w') as f:
                 json.dump(config, f, indent=4)
-            print(f"{CYAN}File konfigurasi default V15 '{CONFIG_FILE}' dibuat.{RESET}")
+            print(f"{CYAN}File konfigurasi default V17 '{CONFIG_FILE}' dibuat.{RESET}")
         except IOError:
-            print(f"{RED}Gagal membuat file konfigurasi V15 '{CONFIG_FILE}'. Menggunakan nilai default.{RESET}")
+            print(f"{RED}Gagal membuat file konfigurasi V17 '{CONFIG_FILE}'. Menggunakan nilai default.{RESET}")
             config = default_config
     return config
 
@@ -665,7 +678,7 @@ def setup_logging():
         ]
     )
     logger = logging.getLogger(__name__)
-    logger.info("=== Encryptor V15 Dimulai ===")
+    logger.info("=== Encryptor V17 Dimulai ===")
 
 # --- Setup Konfigurasi dan Logger ---
 config = load_config()
@@ -1518,14 +1531,17 @@ def encrypt_file_simple(input_path: str, output_path: str, password: str, keyfil
         # --- V14: Encrypted Meta Header (opsional) ---
         # Jika header tidak diEncrypted, tulis langsung
         header_to_write = meta_header_prefix + structure_payload
+        header_size_bytes = len(header_to_write).to_bytes(4, byteorder='big')
 
-        total_output_size = len(header_to_write) + sum(len(part_data) for _, part_data in shuffled_parts)
+
+        total_output_size = len(header_size_bytes) + len(header_to_write) + sum(len(part_data) for _, part_data in shuffled_parts)
 
         with open(output_path, 'wb') as outfile:
             with tqdm(total=total_output_size, unit='B', unit_scale=True, desc="Writing", leave=False) as pbar:
                 # Tulis meta header dulu
+                outfile.write(header_size_bytes)
                 outfile.write(header_to_write)
-                pbar.update(len(header_to_write))
+                pbar.update(len(header_size_bytes) + len(header_to_write))
                 # Tulis bagian-bagian yang diacak
                 for part_name, part_data in shuffled_parts:
                     outfile.write(part_data) # Data bagian
@@ -1669,37 +1685,30 @@ def decrypt_file_simple(input_path: str, output_path: str, password: str, keyfil
         parts_read = {}
         with open(input_path, 'rb') as infile:
             # --- V14: Baca Dynamic Meta Header ---
-            meta_header_size = 2 + 4 # Versi (2) + Jumlah Bagian (4)
-            # Kita baca bagian meta header untuk mengetahui struktur file
-            # Format: [versi_header_meta][jumlah_total_bagian][panjang_nama][nama_bagian_1][panjang_data_1][nama_bagian_2][panjang_data_2]...
-            meta_header_encrypted = infile.read(meta_header_size)
-            version_bytes = meta_header_encrypted[:2]
-            num_total_parts_bytes = meta_header_encrypted[2:6]
+            header_size_bytes = infile.read(4)
+            header_size = int.from_bytes(header_size_bytes, byteorder='big')
+            decrypted_meta_header_structure_info = infile.read(header_size)
 
+            version_bytes = decrypted_meta_header_structure_info[:2]
+            num_total_parts_bytes = decrypted_meta_header_structure_info[2:6]
             version = int.from_bytes(version_bytes, byteorder='big')
             num_total_parts = int.from_bytes(num_total_parts_bytes, byteorder='big')
-
             logger.debug(f"Meta header dinamis dibaca: Versi={version}, Num_Total_Parts={num_total_parts}")
 
-            # --- V14: decryption Meta Header (jika diencrypted) ---
-            # Jika meta header tidak diencrypted, baca sisa bagian struktur dari file
-            # Jumlah byte yang tersisa dalam bagian header sebelum data adalah: (255 + 4) * num_total_parts
             remaining_meta_header_size = (255 + 4) * num_total_parts
-            decrypted_meta_header_structure_info = infile.read(remaining_meta_header_size)
-            if len(decrypted_meta_header_structure_info) != remaining_meta_header_size:
-                    print(f"{RED}❌ Error: File input rusak (info struktur meta header dinamis tidak lengkap).{RESET}")
-                    logger.error(f"Info struktur meta header dinamis tidak lengkap di {input_path}")
-                    return False, None
-            logger.debug(f"Meta header dinamis tidak diencrypted, membaca info struktur langsung.")
+            if len(decrypted_meta_header_structure_info) != remaining_meta_header_size + 6:
+                 print(f"{RED}❌ Error: File input rusak (info struktur meta header dinamis tidak lengkap).{RESET}")
+                 logger.error(f"Info struktur meta header dinamis tidak lengkap di {input_path}")
+                 return False, None
 
 
             # --- V14: Parse Info Struktur dari Meta Header ---
-            structure_info_idx = 0
+            structure_info_idx = 6
             file_structure = []
             for _ in range(num_total_parts):
                  part_name_padded_bytes = decrypted_meta_header_structure_info[structure_info_idx : structure_info_idx + 255]
                  structure_info_idx += 255
-                 part_name = part_name_padded_bytes.decode('ascii').strip('\x00')
+                 part_name = part_name_padded_bytes.decode('latin-1').strip('\x00')
                  part_size_bytes = decrypted_meta_header_structure_info[structure_info_idx : structure_info_idx + 4]
                  structure_info_idx += 4
                  part_size = int.from_bytes(part_size_bytes, byteorder='little')
@@ -2091,15 +2100,25 @@ def encrypt_file_with_master_key(input_path: str, output_path: str, master_key: 
              meta_header_structure_info += part_name_bytes + part_size_bytes
 
         # --- V14: encrypted Meta Header (opsional) ---
-        header_to_write = meta_header_structure_info
+        if config.get("custom_format_encrypt_header", False):
+            header_key = derive_key_from_master_key_for_header(master_key, input_path)
+            header_nonce = secrets.token_bytes(config["gcm_nonce_len"])
+            header_cipher = AESGCM(header_key)
+            encrypted_header = header_cipher.encrypt(header_nonce, meta_header_structure_info, associated_data=None)
+            header_to_write = header_nonce + encrypted_header
+            header_size_bytes = len(header_to_write).to_bytes(4, byteorder='big')
+        else:
+            header_to_write = meta_header_structure_info
+            header_size_bytes = len(header_to_write).to_bytes(4, byteorder='big')
 
-        total_output_size = len(header_to_write) + sum(len(part_data) for _, part_data in shuffled_parts)
+        total_output_size = len(header_size_bytes) + len(header_to_write) + sum(len(part_data) for _, part_data in shuffled_parts)
 
         with open(output_path, 'wb') as outfile:
             with tqdm(total=total_output_size, unit='B', unit_scale=True, desc="Writing", leave=False) as pbar:
                 # Tulis meta header dulu
+                outfile.write(header_size_bytes)
                 outfile.write(header_to_write)
-                pbar.update(len(header_to_write))
+                pbar.update(len(header_size_bytes) + len(header_to_write))
                 # Tulis bagian-bagian yang diacak
                 for part_name, part_data in shuffled_parts:
                     outfile.write(part_data) # Data bagian
@@ -2242,24 +2261,32 @@ def decrypt_file_with_master_key(input_path: str, output_path: str, master_key: 
         parts_read = {}
         with open(input_path, 'rb') as infile:
             # --- V14: Baca Dynamic Meta Header ---
-            meta_header_size = 2 + 4 # Versi (2) + Jumlah Bagian (4)
-            # Kita baca bagian meta header untuk mengetahui struktur file
-            # Format: [versi_header_meta][jumlah_total_bagian][panjang_nama][nama_bagian_1][panjang_data_1][nama_bagian_2][panjang_data_2]...
-            meta_header_encrypted = infile.read(meta_header_size)
-            version_bytes = meta_header_encrypted[:2]
-            num_total_parts_bytes = meta_header_encrypted[2:6]
+            header_size_bytes = infile.read(4)
+            header_size = int.from_bytes(header_size_bytes, byteorder='big')
+            header_content = infile.read(header_size)
 
+            if config.get("custom_format_encrypt_header", False):
+                header_key = derive_key_from_master_key_for_header(master_key, input_path)
+                header_nonce = header_content[:config["gcm_nonce_len"]]
+                encrypted_header_data = header_content[config["gcm_nonce_len"]:]
+                header_cipher = AESGCM(header_key)
+                try:
+                    decrypted_meta_header_structure_info = header_cipher.decrypt(header_nonce, encrypted_header_data, associated_data=None)
+                except Exception as e:
+                    print(f"{RED}❌ Error: Gagal mendekripsi header. File mungkin rusak atau kunci salah.{RESET}")
+                    logger.error(f"Gagal mendekripsi header: {e}")
+                    return False, None
+            else:
+                decrypted_meta_header_structure_info = header_content
+
+            version_bytes = decrypted_meta_header_structure_info[:2]
+            num_total_parts_bytes = decrypted_meta_header_structure_info[2:6]
             version = int.from_bytes(version_bytes, byteorder='big')
             num_total_parts = int.from_bytes(num_total_parts_bytes, byteorder='big')
-
             logger.debug(f"Meta header dinamis dibaca: Versi={version}, Num_Total_Parts={num_total_parts}")
 
-            # --- V14: Decryption Meta Header (jika diencrypted) ---
-            # Jika header tidak diencrypted, baca sisa bagian struktur dari file
-            # Jumlah byte yang tersisa dalam bagian header sebelum data adalah: (255 + 4) * num_total_parts
             remaining_meta_header_size = (255 + 4) * num_total_parts
-            decrypted_meta_header_structure_info = infile.read(remaining_meta_header_size)
-            if len(decrypted_meta_header_structure_info) != remaining_meta_header_size:
+            if len(decrypted_meta_header_structure_info) != remaining_meta_header_size + 6:
                  print(f"{RED}❌ Error: File input rusak (info struktur meta header dinamis tidak lengkap).{RESET}")
                  logger.error(f"Info struktur meta header dinamis tidak lengkap di {input_path}")
                  return False, None
@@ -2267,12 +2294,15 @@ def decrypt_file_with_master_key(input_path: str, output_path: str, master_key: 
 
 
             # --- V14: Parse Info Struktur dari Meta Header ---
-            structure_info_idx = 0
+            structure_info_idx = 6
             file_structure = []
             for _ in range(num_total_parts):
                  part_name_padded_bytes = decrypted_meta_header_structure_info[structure_info_idx : structure_info_idx + 255]
                  structure_info_idx += 255
-                 part_name = part_name_padded_bytes.decode('ascii').strip('\x00')
+                 try:
+                    part_name = part_name_padded_bytes.decode('utf-8').strip('\x00')
+                 except UnicodeDecodeError:
+                    part_name = part_name_padded_bytes.decode('latin-1').strip('\x00')
                  part_size_bytes = decrypted_meta_header_structure_info[structure_info_idx : structure_info_idx + 4]
                  structure_info_idx += 4
                  part_size = int.from_bytes(part_size_bytes, byteorder='little')
@@ -2611,6 +2641,26 @@ def print_box(title, options=None, width=80):
             print(f"{border_color}│{reset} {option_color}{option_padded}{reset} {border_color}│{reset}")
     print(f"{border_color}╰" + "─" * (width - 2) + f"╯{reset}")
 
+
+def print_error_box(message, width=80):
+    """Prints an error message in a standardized box format.
+
+    Args:
+        message: The error message to display.
+        width: The width of the box.
+    """
+    border_color = RED
+    message_color = YELLOW
+    reset = RESET
+
+    print("\n" + "─" * width)
+    # Simple box for error
+    print(f"{border_color}┌{'─' * (width - 2)}┐{reset}")
+    padded_message = message.center(width - 2)
+    print(f"{border_color}│{message_color}{padded_message}{reset}{border_color}│{reset}")
+    print(f"{border_color}└{'─' * (width - 2)}┘{reset}")
+    print("─" * width)
+
 # --- Fungsi Mode Batch ---
 def process_batch_file(args):
     """Processes a single file in batch mode.
@@ -2744,7 +2794,7 @@ def main():
         integrity_thread.start()
         logger.info(f"Runtime integrity checker dimulai dengan interval {interval}s.")
 
-    parser = argparse.ArgumentParser(description='Thena Dev Encryption Tool V16')
+    parser = argparse.ArgumentParser(description='Thena Dev Encryption Tool V17')
     parser.add_argument('--encrypt', action='store_true', help='Mode encrypted')
     parser.add_argument('--decrypt', action='store_true', help='Mode decryption')
     parser.add_argument('--batch', action='store_true', help='Mode batch (memerlukan --dir)')
@@ -2879,7 +2929,7 @@ def main():
 
         while True:
             print_box(
-                f"Thena_Dev Script V16",
+                f"Thena_Dev Script V17",
                 [
                     "1. Encrypted File",
                     "2. Decryption File",
@@ -2896,9 +2946,7 @@ def main():
                 input_path = input(f"{BOLD}Masukkan path file input (untuk {mode_str}): {RESET}").strip()
 
                 if not os.path.isfile(input_path):
-                    print("\n" + "─" * 50)
-                    print(f"{RED}❌ File input tidak ditemukan.{RESET}")
-                    print("─" * 50)
+                    print_error_box("File input tidak ditemukan.")
                     input(f"\n{CYAN}Tekan Enter untuk kembali ke menu utama...{RESET}")
                     clear_screen()
                     continue
@@ -2917,9 +2965,7 @@ def main():
                 else:
                     output_path = input(f"{BOLD}Masukkan nama file output (nama asli sebelum {mode_str}): {RESET}").strip()
                     if not output_path:
-                        print("\n" + "─" * 50)
-                        print(f"{RED}❌ Nama file output tidak boleh kosong.{RESET}")
-                        print("─" * 50)
+                        print_error_box("Nama file output tidak boleh kosong.")
                         input(f"\n{CYAN}Tekan Enter untuk kembali ke menu utama...{RESET}")
                         clear_screen()
                         continue
@@ -2928,9 +2974,7 @@ def main():
 
                 password = input(f"{BOLD}Masukkan kata sandi: {RESET}").strip()
                 if not password:
-                    print("\n" + "─" * 50)
-                    print(f"{RED}❌ Kata sandi tidak boleh kosong.{RESET}")
-                    print("─" * 50)
+                    print_error_box("Kata sandi tidak boleh kosong.")
                     input(f"\n{CYAN}Tekan Enter untuk kembali ke menu utama...{RESET}")
                     clear_screen()
                     continue
@@ -2940,9 +2984,7 @@ def main():
                 if use_keyfile in ['y', 'yes']:
                     keyfile_path = input(f"{BOLD}Masukkan path Keyfile: {RESET}").strip()
                     if not os.path.isfile(keyfile_path):
-                        print("\n" + "─" * 50)
-                        print(f"{RED}❌ File keyfile tidak ditemukan.{RESET}")
-                        print("─" * 50)
+                        print_error_box("File keyfile tidak ditemukan.")
                         input(f"\n{CYAN}Tekan Enter untuk kembali ke menu utama...{RESET}")
                         clear_screen()
                         continue
@@ -3009,7 +3051,7 @@ def main():
 
             elif choice == '3':
                 print("\n" + "─" * 50)
-                print(f"{GREEN}✅ Keluar dari program V15.{RESET}")
+                print(f"{GREEN}✅ Keluar dari program V17.{RESET}")
                 print(f"{YELLOW}⚠️  Ingat:{RESET}")
                 print(f"{YELLOW}  - Simpan password Anda dengan aman.{RESET}")
                 if CRYPTOGRAPHY_AVAILABLE:
@@ -3019,7 +3061,7 @@ def main():
                 print(f"{YELLOW}  - Cadangkan file penting Anda.{RESET}")
                 print(f"{YELLOW}  - Gunakan perangkat ini dengan bijak.{RESET}")
                 print("─" * 50)
-                logger.info(f"=== Encryptor V15 ({'With Advanced Features (cryptography)' if CRYPTOGRAPHY_AVAILABLE else 'Simple Mode (pycryptodome)'}) Selesai ===")
+                logger.info(f"=== Encryptor V17 ({'With Advanced Features (cryptography)' if CRYPTOGRAPHY_AVAILABLE else 'Simple Mode (pycryptodome)'}) Selesai ===")
                 print("─" * 50)
 
                 # --- V10: Hentikan Thread Integrity ---

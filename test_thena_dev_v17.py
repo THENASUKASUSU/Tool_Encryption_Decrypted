@@ -7,7 +7,8 @@ from unittest.mock import patch, mock_open
 
 # Add the path to the script to the system path
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-from Thena_dev_v16 import (
+from Thena_dev_v17 import (
+    config as global_config,
     encrypt_file_simple,
     decrypt_file_simple,
     encrypt_file_with_master_key,
@@ -18,6 +19,7 @@ from Thena_dev_v16 import (
     secure_wipe_file
 )
 
+@patch('Thena_dev_v17.CONFIG_FILE', "thena_config_v17.json")
 class TestThenaDev(unittest.TestCase):
 
     def setUp(self):
@@ -27,18 +29,24 @@ class TestThenaDev(unittest.TestCase):
         self.input_file = os.path.join(self.test_dir, "test_input.txt")
         self.encrypted_file = os.path.join(self.test_dir, "test_input.txt.encrypted")
         self.decrypted_file = os.path.join(self.test_dir, "test_output.txt")
-        self.master_key_file = ".master_key_encrypted_v16"
-        self.config_file = "thena_config_v16.json"
+        self.master_key_file = ".master_key_encrypted_v17"
+        self.config_file = "thena_config_v17.json"
 
         with open(self.input_file, "w") as f:
-            f.write("This is a test file for Thena_dev_v16.")
+            f.write("This is a test file for Thena_dev_v17.")
 
         # Lower the Argon2 time cost to speed up tests
         config = load_config()
         config['argon2_time_cost'] = 1
+        config['master_key_file'] = self.master_key_file
+        config['custom_format_encrypt_header'] = False
+        config['custom_format_shuffle'] = False
         with open(self.config_file, 'w') as f:
             json.dump(config, f, indent=4)
 
+        # Update the global config object in the imported module
+        global_config.clear()
+        global_config.update(config)
 
     def tearDown(self):
         """Clean up test files."""
@@ -159,15 +167,15 @@ class TestThenaDev(unittest.TestCase):
         success_dec, _ = decrypt_file_with_master_key(self.encrypted_file, self.decrypted_file, wrong_master_key)
         self.assertFalse(success_dec, "Master key decryption succeeded with the wrong password.")
 
-    @patch('Thena_dev_v16.encrypt_file_with_master_key')
-    @patch('Thena_dev_v16.load_or_create_master_key')
-    @patch('Thena_dev_v16.validate_password_keyfile', return_value=True)
+    @patch('Thena_dev_v17.encrypt_file_with_master_key')
+    @patch('Thena_dev_v17.load_or_create_master_key')
+    @patch('Thena_dev_v17.validate_password_keyfile', return_value=True)
     def test_main_encrypt_cli(self, mock_validate, mock_load_master_key, mock_encrypt):
         """Test the CLI for encryption."""
         mock_load_master_key.return_value = b'test_master_key'
         mock_encrypt.return_value = (True, self.encrypted_file)
         with patch('sys.argv', [
-            'Thena_dev_v16.py',
+            'Thena_dev_v17.py',
             '--encrypt',
             '-i', self.input_file,
             '-o', self.encrypted_file,
@@ -184,9 +192,9 @@ class TestThenaDev(unittest.TestCase):
                 hide_paths=False
             )
 
-    @patch('Thena_dev_v16.decrypt_file_with_master_key')
-    @patch('Thena_dev_v16.load_or_create_master_key')
-    @patch('Thena_dev_v16.validate_password_keyfile', return_value=True)
+    @patch('Thena_dev_v17.decrypt_file_with_master_key')
+    @patch('Thena_dev_v17.load_or_create_master_key')
+    @patch('Thena_dev_v17.validate_password_keyfile', return_value=True)
     def test_main_decrypt_cli(self, mock_validate, mock_load_master_key, mock_decrypt):
         """Test the CLI for decryption."""
         mock_load_master_key.return_value = b'test_master_key'
@@ -200,7 +208,7 @@ class TestThenaDev(unittest.TestCase):
             f.write("dummy master key data")
 
         with patch('sys.argv', [
-            'Thena_dev_v16.py',
+            'Thena_dev_v17.py',
             '--decrypt',
             '-i', self.encrypted_file,
             '-o', self.decrypted_file,
