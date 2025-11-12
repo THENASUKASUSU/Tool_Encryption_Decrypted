@@ -10,7 +10,7 @@
     "pbkdf2_iterations": 200000,
     "pbkdf2_hash_algorithm": "sha256",
     "chunk_size": 65536,
-    "master_key_file": ".master_key_encrypted_v14",
+    "master_key_file": ".master_key_encrypted_v16",
     "padding_size_length": 4,
     "checksum_length": 32,
     "master_key_salt_len": 16,
@@ -21,7 +21,7 @@
     "compression_level": 6,
     "batch_parallel": false,
     "batch_workers": 2,
-    "hkdf_info_prefix": "thena_v14_file_key_",
+    "hkdf_info_prefix": "thena_v16_file_key_",
     "enable_recursive_batch": false,
     "output_name_suffix": "",
     "use_hmac_verification": true,
@@ -30,7 +30,7 @@
     "disable_timestamp_in_filename": false,
     "verify_output_integrity": true,
     "log_level": "INFO",
-    "hmac_derivation_info": "thena_v14_hmac_key_",
+    "hmac_derivation_info": "thena_v16_hmac_key_",
     "enable_temp_files": false,
     "temp_dir": "./temp_thena",
     "max_file_size": 104857600,
@@ -57,5 +57,5 @@
     "enable_secure_memory_locking": false,
     "enable_runtime_data_integrity": false,
     "custom_format_variable_parts": true,
-    "header_derivation_info": "thena_v14_header_enc_key_"
+    "header_derivation_info": "thena_v16_header_enc_key_"
 }

@@ -95,8 +95,8 @@ import mmap # Impor mmap untuk performa/file besar (V12/V13/V14)
 import struct # Impor struct untuk header dinamis (V12/V13/V14)
 
 # --- Nama File Konfigurasi dan Log ---
-CONFIG_FILE = "thena_config_v15.json"
-LOG_FILE = "thena_encryptor_v15.log"
+CONFIG_FILE = "thena_config_v16.json"
+LOG_FILE = "thena_encryptor_v16.log"
 
 # --- Variabel Global untuk Hardening V10/V11/V12/V13/V14 ---
 integrity_hashes = {} # Dict untuk menyimpan hash fungsi
@@ -536,7 +536,7 @@ def derive_key_from_master_key_for_header(master_key: bytes, input_file_path: st
     file_path_hash = hashlib.sha256(input_file_path.encode()).digest()[:16]
 
     # Ambil string dari konfigurasi dan konversi ke bytes
-    info_prefix_str = config.get("header_derivation_info", "thena_v15_header_enc_key_")
+    info_prefix_str = config.get("header_derivation_info", "thena_v16_header_enc_key_")
     info_bytes = info_prefix_str.encode('utf-8') + file_path_hash
 
     try:
@@ -578,7 +578,7 @@ def load_config():
         "pbkdf2_iterations": 200000, # V15: Ditingkatkan
         "pbkdf2_hash_algorithm": "sha256", # Algoritma hash untuk PBKDF2
         "chunk_size": 64 * 1024,
-        "master_key_file": ".master_key_encrypted_v15", # Ubah nama file master key
+        "master_key_file": ".master_key_encrypted_v16", # Ubah nama file master key
         "padding_size_length": 4,
         "checksum_length": 32,
         "master_key_salt_len": 16,
@@ -589,7 +589,7 @@ def load_config():
         "compression_level": 6, # Level kompresi zlib (0-9)
         "batch_parallel": False, # Opsi eksekusi batch paralel
         "batch_workers": 2, # Jumlah worker jika paralel
-        "hkdf_info_prefix": "thena_v15_file_key_", # Awalan untuk info HKDF
+        "hkdf_info_prefix": "thena_v16_file_key_", # Awalan untuk info HKDF
         "enable_recursive_batch": False, # Opsi batch rekursif
         "output_name_suffix": "", # Suffix untuk nama output batch
         "use_hmac_verification": True, # Opsi verifikasi HMAC tambahan (V7)
@@ -598,34 +598,34 @@ def load_config():
         "disable_timestamp_in_filename": False, # Opsi untuk nama file output tanpa timestamp (V8)
         "verify_output_integrity": True, # Opsi verifikasi integritas file output (V8)
         "log_level": "INFO", # Level logging (V8)
-        "hmac_derivation_info": "thena_v15_hmac_key_", # Info string untuk derivasi HMAC (V8 - Fixed HMAC)
+        "hmac_derivation_info": "thena_v16_hmac_key_", # Info string untuk derivasi HMAC (V8 - Fixed HMAC)
         "enable_temp_files": False, # Opsi untuk menyimpan data sementara ke file (V9 - Hardening)
         "temp_dir": "./temp_thena", # Direktori untuk file sementara (V9 - Hardening)
         "max_file_size": 100 * 1024 * 1024, # Batas maksimal ukuran file yang diproses (100MB) (V9 - Hardening)
         "enable_memory_obfuscation": False, # Opsi untuk obfuskasi data di memori (V9 - Hardening)
         "memory_obfuscation_key": "", # Kunci untuk obfuskasi memori (V9 - Hardening)
         # --- V10/V11/V12/V13: Konfigurasi Hardening Lanjutan ---
-        "enable_secure_memory": True, # Opsi untuk mlock dan overwrite variabel sensitif (V10/V11/V12/V13/V15)
-        "enable_runtime_integrity": False, # Opsi untuk runtime integrity checks (V10/V11/V12/V13/V15)
-        "enable_anti_debug": True, # Opsi untuk anti-debugging techniques (V10/V11/V12/V13/V15)
-        "custom_format_shuffle": True, # Opsi untuk mengacak urutan bagian file output (V10/V11/V12/V13/V15)
-        "custom_format_encrypt_header": True, # Opsi untuk mengenkripsi header file output (V10/V11/V12/V13/V15)
-        "integrity_check_interval": 5, # Interval (detik) untuk pemeriksaan integritas runtime (V10/V11/V12/V13/V15)
-        "debug_detection_methods": ["check_pydevd", "check_ptrace"], # Metode deteksi debug (V10/V11/V12/V13/V15)
-        # --- V12/V13/V15: Konfigurasi Hardening Lanjutan ---
-        "use_mmap_for_large_files": True, # V12/V13/V15: Gunakan mmap untuk file besar (performa/hardening)
-        "large_file_threshold": 10 * 1024 * 1024, # V12/V13/V15: Ambang batas file besar (10MB)
-        "dynamic_header_version": 2, # V15: Ditingkatkan versi header dinamis
-        "dynamic_header_encryption_key_length": 32, # V12/V13/V15: Panjang kunci untuk enkripsi header dinamis
-        "enable_secure_memory_overwrite": False, # V12/V13/V15: Aktifkan overwrite variabel sensitif
-        "enable_dynamic_header_integrity_check": True, # V12/V13/V15: Aktifkan verifikasi integritas header dinamis
-        "hardware_integration_enabled": False, # V12/V13/V15: Placeholder untuk integrasi hardware (TPM)
-        "post_quantum_ready": False, # V12/V13/V15: Placeholder untuk kriptografi post-kuantum
-        # --- V15: Konfigurasi Hardening Lanjutan ---
-        "enable_secure_memory_locking": False, # V15: Aktifkan mlock (jika tersedia)
-        "enable_runtime_data_integrity": False, # V15: Aktifkan pemeriksaan integritas data di memori
-        "custom_format_variable_parts": True, # V15: Aktifkan struktur bagian file yang bervariasi
-        "header_derivation_info": "thena_v15_header_enc_key_", # V15: Info string untuk derivasi kunci header
+        "enable_secure_memory": True, # Opsi untuk mlock dan overwrite variabel sensitif (V10/V11/V12/V13/V16)
+        "enable_runtime_integrity": False, # Opsi untuk runtime integrity checks (V10/V11/V12/V13/V16)
+        "enable_anti_debug": True, # Opsi untuk anti-debugging techniques (V10/V11/V12/V13/V16)
+        "custom_format_shuffle": True, # Opsi untuk mengacak urutan bagian file output (V10/V11/V12/V13/V16)
+        "custom_format_encrypt_header": True, # Opsi untuk mengenkripsi header file output (V10/V11/V12/V13/V16)
+        "integrity_check_interval": 5, # Interval (detik) untuk pemeriksaan integritas runtime (V10/V11/V12/V13/V16)
+        "debug_detection_methods": ["check_pydevd", "check_ptrace"], # Metode deteksi debug (V10/V11/V12/V13/V16)
+        # --- V12/V13/V16: Konfigurasi Hardening Lanjutan ---
+        "use_mmap_for_large_files": True, # V12/V13/V16: Gunakan mmap untuk file besar (performa/hardening)
+        "large_file_threshold": 10 * 1024 * 1024, # V12/V13/V16: Ambang batas file besar (10MB)
+        "dynamic_header_version": 2, # V16: Ditingkatkan versi header dinamis
+        "dynamic_header_encryption_key_length": 32, # V12/V13/V16: Panjang kunci untuk enkripsi header dinamis
+        "enable_secure_memory_overwrite": False, # V12/V13/V16: Aktifkan overwrite variabel sensitif
+        "enable_dynamic_header_integrity_check": True, # V12/V13/V16: Aktifkan verifikasi integritas header dinamis
+        "hardware_integration_enabled": False, # V12/V13/V16: Placeholder untuk integrasi hardware (TPM)
+        "post_quantum_ready": False, # V12/V13/V16: Placeholder untuk kriptografi post-kuantum
+        # --- V16: Konfigurasi Hardening Lanjutan ---
+        "enable_secure_memory_locking": False, # V16: Aktifkan mlock (jika tersedia)
+        "enable_runtime_data_integrity": False, # V16: Aktifkan pemeriksaan integritas data di memori
+        "custom_format_variable_parts": True, # V16: Aktifkan struktur bagian file yang bervariasi
+        "header_derivation_info": "thena_v16_header_enc_key_", # V16: Info string untuk derivasi kunci header
     }
 
     config_path = Path(CONFIG_FILE)
@@ -787,12 +787,13 @@ def check_disk_space(file_path: str, output_dir: str) -> bool:
         logger.error(f"Error saat memeriksa ruang disk untuk '{file_path}' di '{output_dir}': {e}")
         return False
 
-def validate_password_keyfile(password: str, keyfile_path: str) -> bool:
+def validate_password_keyfile(password: str, keyfile_path: str, interactive: bool = True) -> bool:
     """Validates the strength of the password and the keyfile.
 
     Args:
         password: The password to validate.
         keyfile_path: The path to the keyfile to validate.
+        interactive: Whether to prompt the user for confirmation.
 
     Returns:
         True if the password and keyfile are valid, False otherwise.
@@ -838,10 +839,13 @@ def validate_password_keyfile(password: str, keyfile_path: str) -> bool:
         for issue in issues:
             print(f"   - {issue}")
         logger.warning(f"Peringatan validasi untuk input: {', '.join(issues)}")
-        confirm = input(f"{YELLOW}Lanjutkan proses? (y/N): {RESET}").strip().lower()
-        if confirm not in ['y', 'yes']:
-            print(f"{YELLOW}Operasi dibatalkan.{RESET}")
-            logger.info("Operasi dibatalkan berdasarkan validasi input pengguna.")
+        if interactive:
+            confirm = input(f"{YELLOW}Lanjutkan proses? (y/N): {RESET}").strip().lower()
+            if confirm not in ['y', 'yes']:
+                print(f"{YELLOW}Operasi dibatalkan.{RESET}")
+                logger.info("Operasi dibatalkan berdasarkan validasi input pengguna.")
+                return False
+        else:
             return False
     else:
         logger.info("Validasi password/keyfile berhasil.")
@@ -1125,7 +1129,7 @@ def derive_file_key_from_master_key(master_key: bytes, input_file_path: str) -> 
     file_path_hash = hashlib.sha256(input_file_path.encode()).digest()[:16] # Gunakan 16 byte pertama
 
     # Ambil string dari konfigurasi dan konversi ke bytes
-    info_prefix_str = config.get("hkdf_info_prefix", "thena_v15_file_key_")
+    info_prefix_str = config.get("hkdf_info_prefix", "thena_v16_file_key_")
     info_bytes = info_prefix_str.encode('utf-8') + file_path_hash # Gabungkan prefix dan hash path
 
     try:
@@ -1163,7 +1167,7 @@ def derive_hmac_key_from_master_key(master_key: bytes, input_file_path: str) -> 
     file_path_hash = hashlib.sha256(input_file_path.encode()).digest()[:16]
 
     # Ambil string dari konfigurasi dan konversi ke bytes
-    info_prefix_str = config.get("hmac_derivation_info", "thena_v15_hmac_key_")
+    info_prefix_str = config.get("hmac_derivation_info", "thena_v16_hmac_key_")
     info_bytes = info_prefix_str.encode('utf-8') + file_path_hash # Gabungkan prefix dan hash path (V14)
 
     try:
@@ -1430,20 +1434,11 @@ def encrypt_file_simple(input_path: str, output_path: str, password: str, keyfil
                 logger.error(f"Algoritma '{algo}' tidak tersedia tanpa 'cryptography'.")
                 return False, None
         else:
-            print(f"{RED}❌ Error: Algoritma enkripsi '{algo}' tidak dikenal atau tidak didukung di v15 ini.{RESET}")
-            logger.error(f"Algoritma enkripsi '{algo}' tidak dikenal atau tidak didukung di v15 ini.")
+            print(f"{RED}❌ Error: Algoritma enkripsi '{algo}' tidak dikenal atau tidak didukung di v16 ini.{RESET}")
+            logger.error(f"Algoritma enkripsi '{algo}' tidak dikenal atau tidak didukung di v16 ini.")
             return False, None
 
-        # --- V8: Tambahkan HMAC untuk verifikasi tambahan (Fixed HMAC Derivation - V14: Konsisten & Lebih Aman) ---
-        # Gunakan turunan dari Master Key (jika tersedia) atau kombinasi password/keyfile untuk HMAC
-        # V14: Gunakan path file input untuk derivasi HMAC key dari Master Key
-        hmac_key = derive_key_from_password_and_keyfile(password, salt, keyfile_path)
-        if hmac_key is None:
-             print(f"{RED}❌ Error: Gagal menurunkan kunci HMAC.{RESET}")
-             logger.error(f"Gagal menurunkan kunci HMAC untuk {input_path}")
-             return False, None
-        hmac_obj = hmac.new(hmac_key, original_checksum, hashlib.sha256)
-        hmac_digest = hmac_obj.digest()
+        # AEAD ciphers like AES-GCM and ChaCha20-Poly1305 provide authentication, so a separate HMAC is not needed.
 
         # --- V14: Secure Memory Locking untuk HMAC Key ---
         if config.get("enable_secure_memory_locking", False):
@@ -1459,7 +1454,6 @@ def encrypt_file_simple(input_path: str, output_path: str, password: str, keyfil
             ("salt", salt),
             ("nonce", nonce),
             ("checksum", original_checksum),
-            ("hmac", hmac_digest),
             ("padding_added", padding_added.to_bytes(config["padding_size_length"], byteorder='big')),
         ]
         if algo == "aes-gcm" and PYCRYPTODOME_AVAILABLE: # Hanya jika menggunakan pycryptodome
@@ -1550,8 +1544,6 @@ def encrypt_file_simple(input_path: str, output_path: str, password: str, keyfil
             secure_overwrite_variable(key)
             secure_overwrite_variable(plaintext_data)
             secure_overwrite_variable(ciphertext)
-            secure_overwrite_variable(hmac_key)
-            secure_overwrite_variable(hmac_digest)
             secure_overwrite_variable(original_checksum)
             # Variabel lain yang sensitif bisa ditambahkan di sini
 
@@ -1707,12 +1699,11 @@ def decrypt_file_simple(input_path: str, output_path: str, password: str, keyfil
         salt = parts_read.get("salt")
         nonce = parts_read.get("nonce")
         stored_checksum = parts_read.get("checksum")
-        stored_hmac = parts_read.get("hmac")
         padding_size_bytes = parts_read.get("padding_added")
         tag = parts_read.get("tag") # Bisa None jika cryptography
         ciphertext = parts_read.get("ciphertext")
 
-        if not all([salt, nonce, stored_checksum, stored_hmac, padding_size_bytes, ciphertext]):
+        if not all([salt, nonce, stored_checksum, padding_size_bytes, ciphertext]):
              print(f"{RED}❌ Error: File input tidak valid atau rusak (bagian penting hilang).{RESET}")
              logger.error(f"File input '{input_path}' rusak atau tidak lengkap.")
              return False, None
@@ -1734,21 +1725,7 @@ def decrypt_file_simple(input_path: str, output_path: str, password: str, keyfil
             if config.get("enable_runtime_data_integrity", False):
                 register_sensitive_data(f"key_{input_path}", key)
 
-        # --- V8: Verifikasi HMAC (Fixed HMAC Derivation - V14: Konsisten & Lebih Aman) ---
-        # Gunakan turunan dari Master Key (jika tersedia) atau kombinasi password/keyfile untuk HMAC
-        # V14: Gunakan path file input untuk derivasi HMAC key dari Master Key
-        hmac_key = derive_key_from_password_and_keyfile(password, salt, keyfile_path)
-        if hmac_key is None:
-             print(f"{RED}❌ Error: Gagal menurunkan kunci HMAC.{RESET}")
-             logger.error(f"Gagal menurunkan kunci HMAC untuk {input_path}")
-             return False, None
-        hmac_obj = hmac.new(hmac_key, stored_checksum, hashlib.sha256)
-        calculated_hmac = hmac_obj.digest()
-        if not hmac.compare_digest(calculated_hmac, stored_hmac):
-             print(f"{RED}❌ Error: HMAC tidak cocok. File mungkin rusak atau dimanipulasi.{RESET}")
-             logger.error(f"HMAC tidak cocok untuk {input_path}") # Perbaikan: gunakan input_path
-             return False, None
-        logger.debug(f"HMAC verifikasi berhasil untuk {input_path}")
+        # AEAD ciphers like AES-GCM and ChaCha20-Poly1305 provide authentication, so a separate HMAC is not needed.
 
         # --- V14: Secure Memory Locking untuk HMAC Key ---
         if config.get("enable_secure_memory_locking", False):
@@ -1848,8 +1825,6 @@ def decrypt_file_simple(input_path: str, output_path: str, password: str, keyfil
                 secure_overwrite_variable(key)
                 secure_overwrite_variable(final_plaintext)
                 secure_overwrite_variable(plaintext_data)
-                secure_overwrite_variable(hmac_key)
-                secure_overwrite_variable(stored_hmac)
                 secure_overwrite_variable(stored_checksum)
                 secure_overwrite_variable(calculated_checksum)
                 # Variabel lain yang sensitif bisa ditambahkan di sini
@@ -2027,8 +2002,8 @@ def encrypt_file_with_master_key(input_path: str, output_path: str, master_key: 
                 logger.error(f"Algoritma '{algo}' tidak tersedia tanpa 'cryptography'.")
                 return False, None
         else:
-            print(f"{RED}❌ Error: Algoritma enkripsi '{algo}' tidak dikenal atau tidak didukung di v15 ini.{RESET}")
-            logger.error(f"Algoritma enkripsi '{algo}' tidak dikenal atau tidak didukung di v15 ini.")
+            print(f"{RED}❌ Error: Algoritma enkripsi '{algo}' tidak dikenal atau tidak didukung di v16 ini.{RESET}")
+            logger.error(f"Algoritma enkripsi '{algo}' tidak dikenal atau tidak didukung di v16 ini.")
             return False, None
 
         # Kunci file terenkripsi tetap seperti sebelumnya
@@ -2036,15 +2011,7 @@ def encrypt_file_with_master_key(input_path: str, output_path: str, master_key: 
         master_fernet = Fernet(master_fernet_key)
         encrypted_file_key = master_fernet.encrypt(file_key)
 
-        # --- V8: Tambahkan HMAC untuk verifikasi tambahan (Fixed HMAC Derivation - V14: Konsisten & Lebih Aman) ---
-        # Gunakan turunan dari Master Key untuk HMAC (V14: Salt HKDF unik)
-        hmac_key = derive_hmac_key_from_master_key(master_key, output_path) # Gunakan path file input untuk derivasi HMAC
-        if hmac_key is None:
-             print(f"{RED}❌ Error: Gagal menurunkan kunci HMAC dari Master Key.{RESET}")
-             logger.error(f"Gagal menurunkan kunci HMAC dari Master Key untuk {input_path}")
-             return False, None
-        hmac_obj = hmac.new(hmac_key, original_checksum, hashlib.sha256)
-        hmac_digest = hmac_obj.digest()
+        # AEAD ciphers like AES-GCM and ChaCha20-Poly1305 provide authentication, so a separate HMAC is not needed.
 
         # --- V14: Secure Memory Locking untuk HMAC Key ---
         if config.get("enable_secure_memory_locking", False):
@@ -2059,7 +2026,6 @@ def encrypt_file_with_master_key(input_path: str, output_path: str, master_key: 
         parts_to_write = [
             ("nonce", nonce),
             ("checksum", original_checksum),
-            ("hmac", hmac_digest),
             ("padding_added", padding_added.to_bytes(config["padding_size_length"], byteorder='big')),
         ]
         if algo == "aes-gcm" and PYCRYPTODOME_AVAILABLE: # Hanya jika menggunakan pycryptodome
@@ -2154,8 +2120,6 @@ def encrypt_file_with_master_key(input_path: str, output_path: str, master_key: 
             secure_overwrite_variable(encrypted_file_key)
             secure_overwrite_variable(plaintext_data)
             secure_overwrite_variable(ciphertext)
-            secure_overwrite_variable(hmac_key)
-            secure_overwrite_variable(hmac_digest)
             secure_overwrite_variable(original_checksum)
             # Variabel lain yang sensitif bisa ditambahkan di sini
 
@@ -2308,7 +2272,6 @@ def decrypt_file_with_master_key(input_path: str, output_path: str, master_key: 
         # Ambil bagian-bagian yang diperlukan
         nonce = parts_read.get("nonce")
         stored_checksum = parts_read.get("checksum")
-        stored_hmac = parts_read.get("hmac")
         padding_size_bytes = parts_read.get("padding_added")
         len_encrypted_key_bytes = parts_read.get("encrypted_file_key_len")
         encrypted_file_key = parts_read.get("encrypted_file_key")
@@ -2316,7 +2279,7 @@ def decrypt_file_with_master_key(input_path: str, output_path: str, master_key: 
         # Tag hanya ada jika pycryptodome
         tag = parts_read.get("tag") if PYCRYPTODOME_AVAILABLE else b""
 
-        if not all([nonce, stored_checksum, stored_hmac, padding_size_bytes, len_encrypted_key_bytes, encrypted_file_key, ciphertext]):
+        if not all([nonce, stored_checksum, padding_size_bytes, len_encrypted_key_bytes, encrypted_file_key, ciphertext]):
              print(f"{RED}❌ Error: File input tidak valid atau rusak (bagian penting hilang).{RESET}")
              logger.error(f"File input '{input_path}' rusak atau tidak lengkap.")
              return False, None
@@ -2351,20 +2314,7 @@ def decrypt_file_with_master_key(input_path: str, output_path: str, master_key: 
                 register_sensitive_data(f"master_key_{input_path}", master_key)
                 register_sensitive_data(f"file_key_{input_path}", file_key)
 
-        # --- V8: Verifikasi HMAC (Fixed HMAC Derivation - V14: Konsisten & Lebih Aman) ---
-        # Gunakan turunan dari Master Key untuk HMAC (V14: Salt HKDF unik)
-        hmac_key = derive_hmac_key_from_master_key(master_key, input_path) # Gunakan path file input untuk derivasi HMAC
-        if hmac_key is None:
-             print(f"{RED}❌ Error: Gagal menurunkan kunci HMAC dari Master Key.{RESET}")
-             logger.error(f"Gagal menurunkan kunci HMAC dari Master Key untuk {input_path}")
-             return False, None
-        hmac_obj = hmac.new(hmac_key, stored_checksum, hashlib.sha256)
-        calculated_hmac = hmac_obj.digest()
-        if not hmac.compare_digest(calculated_hmac, stored_hmac):
-             print(f"{RED}❌ Error: HMAC tidak cocok. File mungkin rusak atau dimanipulasi.{RESET}")
-             logger.error(f"HMAC tidak cocok untuk {input_path}") # Perbaikan: gunakan input_path
-             return False, None
-        logger.debug(f"HMAC verifikasi berhasil untuk {input_path}")
+        # AEAD ciphers like AES-GCM and ChaCha20-Poly1305 provide authentication, so a separate HMAC is not needed.
 
         # --- V14: Secure Memory Locking untuk HMAC Key ---
         if config.get("enable_secure_memory_locking", False):
@@ -2461,8 +2411,6 @@ def decrypt_file_with_master_key(input_path: str, output_path: str, master_key: 
                 secure_overwrite_variable(final_plaintext)
                 secure_overwrite_variable(plaintext_data)
                 secure_overwrite_variable(ciphertext)
-                secure_overwrite_variable(hmac_key)
-                secure_overwrite_variable(stored_hmac)
                 secure_overwrite_variable(stored_checksum)
                 secure_overwrite_variable(calculated_checksum)
                 # Variabel lain yang sensitif bisa ditambahkan di sini
@@ -2526,7 +2474,7 @@ def derive_hmac_key_from_master_key(master_key: bytes, input_file_path: str) -> 
     file_path_hash = hashlib.sha256(input_file_path.encode()).digest()[:16]
 
     # Ambil string dari konfigurasi dan konversi ke bytes
-    info_prefix_str = config.get("hmac_derivation_info", "thena_v15_hmac_key_")
+    info_prefix_str = config.get("hmac_derivation_info", "thena_v16_hmac_key_")
     info_bytes = info_prefix_str.encode('utf-8') + file_path_hash # Gabungkan prefix dan hash path (V14)
 
     try:
@@ -2567,7 +2515,7 @@ def derive_key_from_master_key_for_header(master_key: bytes, input_file_path: st
     file_path_hash = hashlib.sha256(input_file_path.encode()).digest()[:16]
 
     # Ambil string dari konfigurasi dan konversi ke bytes
-    info_prefix_str = config.get("header_derivation_info", "thena_v15_header_enc_key_")
+    info_prefix_str = config.get("header_derivation_info", "thena_v16_header_enc_key_")
     info_bytes = info_prefix_str.encode('utf-8') + file_path_hash
 
     try:
@@ -2685,16 +2633,26 @@ def batch_process(directory: str, mode: str, password: str, keyfile_path: str = 
         return
 
     # Tentukan ekstensi berdasarkan mode dan apakah rekursif
-    target_ext = ".encrypted" if mode == 'decrypt' else ""
     files_to_process = []
-    if config.get("enable_recursive_batch", False):
-        print(f"{CYAN}Memindai sub-direktori secara rekursif...{RESET}")
-        for root, dirs, files in os.walk(directory):
-            for file in files:
-                if file.endswith(target_ext):
-                    files_to_process.append(os.path.join(root, file))
-    else:
-        files_to_process = [os.path.join(directory, f) for f in os.listdir(directory) if os.path.isfile(os.path.join(directory, f)) and f.endswith(target_ext)]
+    if mode == 'decrypt':
+        target_ext = ".encrypted"
+        if config.get("enable_recursive_batch", False):
+            print(f"{CYAN}Memindai sub-direktori secara rekursif...{RESET}")
+            for root, dirs, files in os.walk(directory):
+                for file in files:
+                    if file.endswith(target_ext):
+                        files_to_process.append(os.path.join(root, file))
+        else:
+            files_to_process = [os.path.join(directory, f) for f in os.listdir(directory) if os.path.isfile(os.path.join(directory, f)) and f.endswith(target_ext)]
+    else: # encrypt mode
+        if config.get("enable_recursive_batch", False):
+            print(f"{CYAN}Memindai sub-direktori secara rekursif...{RESET}")
+            for root, dirs, files in os.walk(directory):
+                for file in files:
+                    if not file.endswith(".encrypted"):
+                        files_to_process.append(os.path.join(root, file))
+        else:
+            files_to_process = [os.path.join(directory, f) for f in os.listdir(directory) if os.path.isfile(os.path.join(directory, f)) and not f.endswith(".encrypted")]
 
     if not files_to_process:
         print(f"{YELLOW}⚠️  Tidak ditemukan file yang cocok untuk {mode} di direktori '{directory}'.{RESET}")
