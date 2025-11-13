@@ -2611,6 +2611,16 @@ def print_box(title, options=None, width=80):
             print(f"{border_color}│{reset} {option_color}{option_padded}{reset} {border_color}│{reset}")
     print(f"{border_color}╰" + "─" * (width - 2) + f"╯{reset}")
 
+
+def handle_error(message: str):
+    """Menampilkan pesan error, menunggu input, dan membersihkan layar."""
+    print("\n" + "─" * 50)
+    print(f"{RED}❌ {message}{RESET}")
+    print("─" * 50)
+    input(f"\n{CYAN}Tekan Enter untuk kembali ke menu utama...{RESET}")
+    clear_screen()
+
+
 # --- Fungsi Mode Batch ---
 def process_batch_file(args):
     """Processes a single file in batch mode.
@@ -2896,12 +2906,12 @@ def main():
                 input_path = input(f"{BOLD}Masukkan path file input (untuk {mode_str}): {RESET}").strip()
 
                 if not os.path.isfile(input_path):
-                    print("\n" + "─" * 50)
-                    print(f"{RED}❌ File input tidak ditemukan.{RESET}")
-                    print("─" * 50)
+                    handle_error("File input tidak ditemukan.")
                     continue
 
                 if not check_file_size_limit(input_path):
+                    input(f"\n{CYAN}Tekan Enter untuk kembali ke menu utama...{RESET}")
+                    clear_screen()
                     continue
 
                 if is_encrypt:
@@ -2913,18 +2923,16 @@ def main():
                 else:
                     output_path = input(f"{BOLD}Masukkan nama file output (nama asli sebelum {mode_str}): {RESET}").strip()
                     if not output_path:
-                        print("\n" + "─" * 50)
-                        print(f"{RED}❌ Nama file output tidak boleh kosong.{RESET}")
-                        print("─" * 50)
+                        handle_error("Nama file output tidak boleh kosong.")
                         continue
                     if not confirm_overwrite(output_path):
+                        input(f"\n{CYAN}Tekan Enter untuk kembali ke menu utama...{RESET}")
+                        clear_screen()
                         continue
 
                 password = input(f"{BOLD}Masukkan kata sandi: {RESET}").strip()
                 if not password:
-                    print("\n" + "─" * 50)
-                    print(f"{RED}❌ Kata sandi tidak boleh kosong.{RESET}")
-                    print("─" * 50)
+                    handle_error("Kata sandi tidak boleh kosong.")
                     continue
 
                 use_keyfile = input(f"{BOLD}Gunakan Keyfile? (y/N): {RESET}").strip().lower()
@@ -2932,12 +2940,12 @@ def main():
                 if use_keyfile in ['y', 'yes']:
                     keyfile_path = input(f"{BOLD}Masukkan path Keyfile: {RESET}").strip()
                     if not os.path.isfile(keyfile_path):
-                        print("\n" + "─" * 50)
-                        print(f"{RED}❌ File keyfile tidak ditemukan.{RESET}")
-                        print("─" * 50)
+                        handle_error("File keyfile tidak ditemukan.")
                         continue
 
                 if not validate_password_keyfile(password, keyfile_path):
+                    input(f"\n{CYAN}Tekan Enter untuk kembali ke menu utama...{RESET}")
+                    clear_screen()
                     continue
 
                 hide_paths_input = input(f"{BOLD}Sembunyikan path file di output layar? (y/N): {RESET}").strip().lower()
@@ -2955,7 +2963,7 @@ def main():
                 if CRYPTOGRAPHY_AVAILABLE:
                     master_key = load_or_create_master_key(password, keyfile_path)
                     if master_key is None:
-                        print(f"{RED}❌ Gagal mendapatkan Master Key. Operasi dibatalkan.{RESET}")
+                        handle_error("Gagal mendapatkan Master Key. Operasi dibatalkan.")
                         continue
                     if is_encrypt:
                         func = encrypt_file_with_master_key
@@ -3020,10 +3028,8 @@ def main():
                 sys.exit(0)
 
             else:
-                print("\n" + "─" * 50)
-                print(f"{RED}❌ Pilihan tidak valid. Silakan coba lagi.{RESET}")
                 logger.warning(f"Pilihan tidak valid dimasukkan: {choice}")
-                print("─" * 50)
+                handle_error("Pilihan tidak valid. Silakan coba lagi.")
 
 if __name__ == "__main__":
     main()
