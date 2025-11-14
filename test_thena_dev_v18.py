@@ -157,7 +157,7 @@ class TestThenaDev(unittest.TestCase):
         mock_encrypt.return_value = (True, self.encrypted_file)
         with patch('sys.argv', ['Thena_dev_v18.py', '--encrypt', '-i', self.input_file, '-o', self.encrypted_file, '-p', 'password']):
             thena.main()
-            mock_load_master_key.assert_called_with('password', None)
+            mock_load_master_key.assert_called_with('password', None, hide_paths=False)
             mock_encrypt.assert_called_with(self.input_file, self.encrypted_file, b'test_master_key', add_random_padding=True, hide_paths=False)
 
     @patch('sys.exit')
@@ -180,7 +180,7 @@ class TestThenaDev(unittest.TestCase):
 
         with patch('sys.argv', ['Thena_dev_v18.py', '--decrypt', '-i', self.encrypted_file, '-o', self.decrypted_file, '-p', 'password']):
             thena.main()
-            mock_load_master_key.assert_called_with('password', None)
+            mock_load_master_key.assert_called_with('password', None, hide_paths=False)
             mock_decrypt.assert_called_with(self.encrypted_file, self.decrypted_file, b'test_master_key', hide_paths=False)
 
     @patch('builtins.input', return_value='y')

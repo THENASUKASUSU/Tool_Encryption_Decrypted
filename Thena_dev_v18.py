@@ -649,16 +649,19 @@ def load_config():
     return config
 
 # --- Setup Logging ---
-def setup_logging():
+def setup_logging(interactive_mode=False):
     """Configures the logging for the application."""
     level = getattr(logging, config.get("log_level", "INFO").upper(), logging.INFO)
+
+    # Tentukan handlers berdasarkan mode
+    handlers = [logging.FileHandler(LOG_FILE)]
+    if not interactive_mode:
+        handlers.append(logging.StreamHandler())
+
     logging.basicConfig(
         level=level,
         format='%(asctime)s - %(levelname)s - %(message)s',
-        handlers=[
-            logging.FileHandler(LOG_FILE),
-            logging.StreamHandler()
-        ]
+        handlers=handlers
     )
     logger = logging.getLogger(__name__)
     logger.info("=== Encryptor V18 Dimulai ===")
@@ -1230,7 +1233,7 @@ def derive_hmac_key_from_master_key(master_key: bytes, input_file_path: str) -> 
         return secrets.token_bytes(config["hmac_key_length"])
 
 # --- Fungsi Master Key Management ---
-def load_or_create_master_key(password: str, keyfile_path: str):
+def load_or_create_master_key(password: str, keyfile_path: str, hide_paths: bool = False):
     """Loads a master key from a file or creates a new one.
 
     If the master key file exists, this function attempts to decrypt it
@@ -1242,13 +1245,17 @@ def load_or_create_master_key(password: str, keyfile_path: str):
             key.
         keyfile_path: The path to the keyfile to use for decrypting or
             creating the master key.
+        hide_paths (bool): Whether to hide the file paths in the output.
 
     Returns:
         The loaded or created master key, or None if an error occurs.
     """
     master_key = None
     if os.path.exists(config["master_key_file"]):
-        print(f"{CYAN}Memuat Master Key dari '{config['master_key_file']}'...{RESET}")
+        if hide_paths:
+            print(f"{CYAN}Memuat Master Key...{RESET}")
+        else:
+            print(f"{CYAN}Memuat Master Key dari '{config['master_key_file']}'...{RESET}")
         try:
             with open(config["master_key_file"], 'rb') as f:
                 salt = f.read(config["master_key_salt_len"])
@@ -1272,11 +1279,17 @@ def load_or_create_master_key(password: str, keyfile_path: str):
                     logger.error(f"Gagal mendecryption Master Key: {e}")
                     return None
         except FileNotFoundError:
-            print(f"{RED}❌ Error: File Master Key '{config['master_key_file']}' tidak ditemukan.{RESET}")
+            if hide_paths:
+                print(f"{RED}❌ Error: File Master Key tidak ditemukan.{RESET}")
+            else:
+                print(f"{RED}❌ Error: File Master Key '{config['master_key_file']}' tidak ditemukan.{RESET}")
             logger.error(f"File Master Key '{config['master_key_file']}' tidak ditemukan.")
             return None
     else:
-        print(f"{YELLOW}File Master Key '{config['master_key_file']}' tidak ditemukan. Membuat yang baru...{RESET}")
+        if hide_paths:
+            print(f"{YELLOW}File Master Key tidak ditemukan. Membuat yang baru...{RESET}")
+        else:
+            print(f"{YELLOW}File Master Key '{config['master_key_file']}' tidak ditemukan. Membuat yang baru...{RESET}")
         master_key = secrets.token_bytes(config["file_key_length"]) # Buat Master Key acak
         salt = secrets.token_bytes(config["master_key_salt_len"]) # Buat salt acak untuk Encrypted Fernet
         fernet_key_bytes = derive_key_from_password_and_keyfile(password, salt, keyfile_path)
@@ -1420,7 +1433,6 @@ def encrypt_file_simple(input_path: str, output_path: str, password: str, keyfil
                     plaintext_data = mmapped_file[:]
         else:
             with open(input_path, 'rb') as infile:
-                print_loading_progress()
                 while True:
                     chunk = infile.read(config["chunk_size"])
                     if not chunk:
@@ -1992,7 +2004,6 @@ def encrypt_file_with_master_key(input_path: str, output_path: str, master_key: 
                     plaintext_data = mmapped_file[:]
         else:
             with open(input_path, 'rb') as infile:
-                print_loading_progress()
                 while True:
                     chunk = infile.read(config["chunk_size"])
                     if not chunk:
@@ -2827,7 +2838,7 @@ def main():
             if args.random_name or config.get("disable_timestamp_in_filename", False): # V8: Gunakan nama acak jika --random-name ATAU konfigurasi
                  output_path = f"{int(time.time() * 1000)}{config.get('output_name_suffix', '')}.encrypted"
             if CRYPTOGRAPHY_AVAILABLE:
-                master_key = load_or_create_master_key(password, keyfile_path)
+                master_key = load_or_create_master_key(password, keyfile_path, hide_paths=hide_paths)
                 if master_key is None:
                     print_error_box("Gagal mendapatkan Master Key.")
                     sys.exit(1)
@@ -2844,7 +2855,7 @@ def main():
                 if not os.path.exists(config["master_key_file"]):
                     print_error_box(f"Error: File Master Key '{config['master_key_file']}' tidak ditemukan. Tidak dapat mendecryption tanpanya.")
                     sys.exit(1)
-                master_key = load_or_create_master_key(password, keyfile_path)
+                master_key = load_or_create_master_key(password, keyfile_path, hide_paths=hide_paths)
                 if master_key is None:
                     print_error_box("Gagal mendapatkan Master Key.")
                     sys.exit(1)
@@ -2858,7 +2869,7 @@ def main():
                 sys.exit(1)
 
     else: # Mode Interaktif
-        setup_logging()
+        setup_logging(interactive_mode=True)
         clear_screen()
         # Hapus pesan watermark di awal mode interaktif
 
@@ -2940,7 +2951,7 @@ def main():
                     add_padding = True # Padding tidak berpengaruh saat decryption
 
                 if CRYPTOGRAPHY_AVAILABLE:
-                    master_key = load_or_create_master_key(password, keyfile_path)
+                    master_key = load_or_create_master_key(password, keyfile_path, hide_paths=hide_paths)
                     if master_key is None:
                         print_error_box("Gagal mendapatkan Master Key. Operasi dibatalkan.")
                         continue
