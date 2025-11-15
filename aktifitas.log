@@ -1,0 +1,142 @@
+2025-11-15 18:32:58,020 - INFO - === Encryptor V19 Dimulai ===
+2025-11-15 18:32:58,023 - INFO - Ruang disk cukup. File 'test_data_asymmetric/test_input.txt' (1024 bytes) akan menghasilkan sekitar 66760 bytes di 'test_data_asymmetric'.
+2025-11-15 18:32:58,023 - INFO - Memulai encrypted file (simple) di direktori: test_data_asymmetric
+2025-11-15 18:32:58,023 - INFO - Ukuran file input: 1024 bytes
+2025-11-15 18:32:58,024 - ERROR - Argon2 tidak tersedia.
+2025-11-15 18:32:58,024 - ERROR - Failed to derive header key for test_data_asymmetric/test_input.txt
+2025-11-15 18:32:58,025 - INFO - Ruang disk cukup. File 'test_data/test_input.txt' (1024 bytes) akan menghasilkan sekitar 66760 bytes di 'test_data'.
+2025-11-15 18:32:58,025 - INFO - Memulai encrypted file (simple) di direktori: test_data
+2025-11-15 18:32:58,025 - INFO - Ukuran file input: 1024 bytes
+2025-11-15 18:32:58,025 - ERROR - Argon2 tidak tersedia.
+2025-11-15 18:32:58,025 - ERROR - Failed to derive header key for test_data/test_input.txt
+2025-11-15 18:32:58,026 - INFO - Ruang disk cukup. File 'test_data/test_input.txt' (1024 bytes) akan menghasilkan sekitar 66760 bytes di 'test_data'.
+2025-11-15 18:32:58,026 - INFO - Memulai encrypted file (simple) di direktori: test_data
+2025-11-15 18:32:58,026 - INFO - Ukuran file input: 1024 bytes
+2025-11-15 18:32:58,026 - ERROR - Argon2 tidak tersedia.
+2025-11-15 18:32:58,026 - ERROR - Failed to derive header key for test_data/test_input.txt
+2025-11-15 18:32:58,027 - INFO - Ruang disk cukup. File 'test_data/test_input.txt' (1024 bytes) akan menghasilkan sekitar 66760 bytes di 'test_data'.
+2025-11-15 18:32:58,027 - INFO - Memulai encrypted file (simple) di direktori: test_data
+2025-11-15 18:32:58,027 - INFO - Ukuran file input: 1024 bytes
+2025-11-15 18:32:58,027 - ERROR - Argon2 tidak tersedia.
+2025-11-15 18:32:58,027 - ERROR - Failed to derive header key for test_data/test_input.txt
+2025-11-15 18:32:58,028 - ERROR - Argon2 tidak tersedia.
+2025-11-15 18:32:58,028 - ERROR - Gagal menurunkan kunci untuk mengencrypted Master Key baru.
+2025-11-15 18:32:58,029 - INFO - Ruang disk cukup. File 'test_data_kdf/test_input.txt' (1024 bytes) akan menghasilkan sekitar 66760 bytes di 'test_data_kdf'.
+2025-11-15 18:32:58,029 - INFO - Memulai encrypted file (simple) di direktori: test_data_kdf
+2025-11-15 18:32:58,029 - INFO - Ukuran file input: 1024 bytes
+2025-11-15 18:32:59,252 - INFO - Ukuran file output: 32250 bytes
+2025-11-15 18:32:59,252 - INFO - Verifikasi integritas output berhasil untuk test_data_kdf/test_input.encrypted
+2025-11-15 18:32:59,252 - INFO - Durasi encrypted: 1.22 detik
+2025-11-15 18:32:59,252 - INFO - Encrypted (simple) berhasil ke file di direktori: test_data_kdf
+2025-11-15 18:32:59,253 - INFO - Memulai decryption file (simple) ke direktori: test_data_kdf
+2025-11-15 18:32:59,253 - INFO - Ukuran file input: 32250 bytes
+2025-11-15 18:33:00,585 - INFO - Ukuran file output: 1024 bytes
+2025-11-15 18:33:00,585 - INFO - Durasi decryption: 1.33 detik
+2025-11-15 18:33:00,585 - INFO - Decryption (simple) berhasil ke file di direktori: test_data_kdf
+2025-11-15 18:33:00,586 - INFO - Ruang disk cukup. File 'test_data_kdf/test_input.txt' (1024 bytes) akan menghasilkan sekitar 66760 bytes di 'test_data_kdf'.
+2025-11-15 18:33:00,586 - INFO - Memulai encrypted file (simple) di direktori: test_data_kdf
+2025-11-15 18:33:00,586 - INFO - Ukuran file input: 1024 bytes
+2025-11-15 18:33:22,803 - INFO - Ukuran file output: 52644 bytes
+2025-11-15 18:33:22,804 - INFO - Verifikasi integritas output berhasil untuk test_data_kdf/test_input.encrypted
+2025-11-15 18:33:22,804 - INFO - Durasi encrypted: 22.22 detik
+2025-11-15 18:33:22,804 - INFO - Encrypted (simple) berhasil ke file di direktori: test_data_kdf
+2025-11-15 18:33:22,804 - INFO - Memulai decryption file (simple) ke direktori: test_data_kdf
+2025-11-15 18:33:22,804 - INFO - Ukuran file input: 52644 bytes
+2025-11-15 18:33:40,161 - INFO - Ukuran file output: 1024 bytes
+2025-11-15 18:33:40,161 - INFO - Durasi decryption: 17.36 detik
+2025-11-15 18:33:40,161 - INFO - Decryption (simple) berhasil ke file di direktori: test_data_kdf
+2025-11-15 18:33:41,267 - INFO - File 'test_data_utils/wipe_me.txt' dihapus secara aman (1 passes).
+2025-11-15 18:33:41,268 - WARNING - Peringatan validasi untuk input: Password terlalu pendek (kurang dari 12 karakter)., Password hanya berisi huruf., Password tidak memiliki huruf besar., Password tidak memiliki karakter khusus (!@#...).
+2025-11-15 18:33:41,268 - WARNING - Peringatan validasi untuk input: Password hanya berisi huruf., Password tidak memiliki huruf besar., Password tidak memiliki karakter khusus (!@#...).
+2025-11-15 18:33:41,268 - WARNING - Peringatan validasi untuk input: Password hanya berisi angka., Password tidak memiliki karakter khusus (!@#...).
+2025-11-15 18:33:41,268 - INFO - Validasi password/keyfile berhasil.
+2025-11-15 18:33:41,268 - INFO - Cleanup file sementara selesai.
+2025-11-15 18:34:20,365 - INFO - === Encryptor V19 Dimulai ===
+2025-11-15 18:34:20,370 - INFO - Ruang disk cukup. File 'test_data_asymmetric/test_input.txt' (1024 bytes) akan menghasilkan sekitar 66760 bytes di 'test_data_asymmetric'.
+2025-11-15 18:34:20,370 - INFO - Memulai encrypted file (simple) di direktori: test_data_asymmetric
+2025-11-15 18:34:20,370 - INFO - Ukuran file input: 1024 bytes
+2025-11-15 18:35:28,712 - INFO - Ukuran file output: 27451 bytes
+2025-11-15 18:35:28,713 - INFO - Verifikasi integritas output berhasil untuk test_data_asymmetric/test_input.encrypted
+2025-11-15 18:35:28,713 - INFO - Durasi encrypted: 68.34 detik
+2025-11-15 18:35:28,713 - INFO - Encrypted (simple) berhasil ke file di direktori: test_data_asymmetric
+2025-11-15 18:35:28,713 - INFO - Memulai decryption file (simple) ke direktori: test_data_asymmetric
+2025-11-15 18:35:28,713 - INFO - Ukuran file input: 27451 bytes
+2025-11-15 18:36:21,200 - INFO - Ukuran file output: 1024 bytes
+2025-11-15 18:36:21,200 - INFO - Durasi decryption: 52.49 detik
+2025-11-15 18:36:21,200 - INFO - Decryption (simple) berhasil ke file di direktori: test_data_asymmetric
+2025-11-15 18:36:21,201 - INFO - Ruang disk cukup. File 'test_data/test_input.txt' (1024 bytes) akan menghasilkan sekitar 66760 bytes di 'test_data'.
+2025-11-15 18:36:21,201 - INFO - Memulai encrypted file (simple) di direktori: test_data
+2025-11-15 18:36:21,201 - INFO - Ukuran file input: 1024 bytes
+2025-11-15 18:36:38,710 - INFO - Ukuran file output: 38438 bytes
+2025-11-15 18:36:38,710 - INFO - Verifikasi integritas output berhasil untuk test_data/test_input.encrypted
+2025-11-15 18:36:38,710 - INFO - Durasi encrypted: 17.51 detik
+2025-11-15 18:36:38,710 - INFO - Encrypted (simple) berhasil ke file di direktori: test_data
+2025-11-15 18:36:38,711 - INFO - Memulai decryption file (simple) ke direktori: test_data
+2025-11-15 18:36:38,711 - INFO - Ukuran file input: 38438 bytes
+2025-11-15 18:37:11,101 - ERROR - Decryption gagal (otentikasi AES-GCM cryptography) untuk test_data/test_input.encrypted:
+2025-11-15 18:37:11,102 - INFO - Ruang disk cukup. File 'test_data/test_input.txt' (1024 bytes) akan menghasilkan sekitar 66760 bytes di 'test_data'.
+2025-11-15 18:37:11,102 - INFO - Memulai encrypted file (simple) di direktori: test_data
+2025-11-15 18:37:11,102 - INFO - Ukuran file input: 1024 bytes
+2025-11-15 18:37:28,321 - INFO - Ukuran file output: 50362 bytes
+2025-11-15 18:37:28,321 - INFO - Verifikasi integritas output berhasil untuk test_data/test_input.encrypted
+2025-11-15 18:37:28,321 - INFO - Durasi encrypted: 17.22 detik
+2025-11-15 18:37:28,321 - INFO - Encrypted (simple) berhasil ke file di direktori: test_data
+2025-11-15 18:37:28,321 - INFO - Memulai decryption file (simple) ke direktori: test_data
+2025-11-15 18:37:28,321 - INFO - Ukuran file input: 50362 bytes
+2025-11-15 18:37:44,402 - ERROR - Gagal mendekripsi header:
+2025-11-15 18:37:44,403 - INFO - Ruang disk cukup. File 'test_data/test_input.txt' (1024 bytes) akan menghasilkan sekitar 66760 bytes di 'test_data'.
+2025-11-15 18:37:44,403 - INFO - Memulai encrypted file (simple) di direktori: test_data
+2025-11-15 18:37:44,403 - INFO - Ukuran file input: 1024 bytes
+2025-11-15 18:38:01,539 - INFO - Ukuran file output: 55734 bytes
+2025-11-15 18:38:01,539 - INFO - Verifikasi integritas output berhasil untuk test_data/test_input.encrypted
+2025-11-15 18:38:01,539 - INFO - Durasi encrypted: 17.14 detik
+2025-11-15 18:38:01,539 - INFO - Encrypted (simple) berhasil ke file di direktori: test_data
+2025-11-15 18:38:01,539 - INFO - Memulai decryption file (simple) ke direktori: test_data
+2025-11-15 18:38:01,539 - INFO - Ukuran file input: 55734 bytes
+2025-11-15 18:38:34,778 - INFO - Ukuran file output: 1024 bytes
+2025-11-15 18:38:34,779 - INFO - Durasi decryption: 33.24 detik
+2025-11-15 18:38:34,779 - INFO - Decryption (simple) berhasil ke file di direktori: test_data
+2025-11-15 18:38:51,964 - INFO - Master Key baru berhasil dibuat dan disimpan.
+2025-11-15 18:38:51,964 - INFO - Ruang disk cukup. File 'test_data/test_input.txt' (1024 bytes) akan menghasilkan sekitar 66760 bytes di 'test_data'.
+2025-11-15 18:38:51,965 - INFO - Memulai encrypted file (dengan Master Key) di direktori: test_data
+2025-11-15 18:38:51,965 - INFO - Ukuran file input: 1024 bytes
+2025-11-15 18:38:53,069 - INFO - Ukuran file output: 8811 bytes
+2025-11-15 18:38:53,069 - INFO - Verifikasi integritas output berhasil untuk test_data/test_input.encrypted
+2025-11-15 18:38:53,069 - INFO - Durasi encrypted: 1.10 detik
+2025-11-15 18:38:53,069 - INFO - Encrypted (dengan Master Key) berhasil ke file di direktori: test_data
+2025-11-15 18:38:53,069 - INFO - Memulai decryption file (dengan Master Key) ke direktori: test_data
+2025-11-15 18:38:53,070 - INFO - Ukuran file input: 8811 bytes
+2025-11-15 18:38:54,173 - INFO - Ukuran file output: 1024 bytes
+2025-11-15 18:38:54,173 - INFO - Durasi decryption: 1.10 detik
+2025-11-15 18:38:54,173 - INFO - Decryption (dengan Master Key) berhasil ke file di direktori: test_data
+2025-11-15 18:38:54,173 - INFO - File Master Key '.master_key_encrypted_v18' dihapus secara otomatis setelah decryption berhasil.
+2025-11-15 18:38:54,174 - INFO - Ruang disk cukup. File 'test_data_kdf/test_input.txt' (1024 bytes) akan menghasilkan sekitar 66760 bytes di 'test_data_kdf'.
+2025-11-15 18:38:54,174 - INFO - Memulai encrypted file (simple) di direktori: test_data_kdf
+2025-11-15 18:38:54,174 - INFO - Ukuran file input: 1024 bytes
+2025-11-15 18:38:55,394 - INFO - Ukuran file output: 69154 bytes
+2025-11-15 18:38:55,395 - INFO - Verifikasi integritas output berhasil untuk test_data_kdf/test_input.encrypted
+2025-11-15 18:38:55,395 - INFO - Durasi encrypted: 1.22 detik
+2025-11-15 18:38:55,395 - INFO - Encrypted (simple) berhasil ke file di direktori: test_data_kdf
+2025-11-15 18:38:55,395 - INFO - Memulai decryption file (simple) ke direktori: test_data_kdf
+2025-11-15 18:38:55,395 - INFO - Ukuran file input: 69154 bytes
+2025-11-15 18:38:56,732 - INFO - Ukuran file output: 1024 bytes
+2025-11-15 18:38:56,732 - INFO - Durasi decryption: 1.34 detik
+2025-11-15 18:38:56,733 - INFO - Decryption (simple) berhasil ke file di direktori: test_data_kdf
+2025-11-15 18:38:56,733 - INFO - Ruang disk cukup. File 'test_data_kdf/test_input.txt' (1024 bytes) akan menghasilkan sekitar 66760 bytes di 'test_data_kdf'.
+2025-11-15 18:38:56,733 - INFO - Memulai encrypted file (simple) di direktori: test_data_kdf
+2025-11-15 18:38:56,734 - INFO - Ukuran file input: 1024 bytes
+2025-11-15 18:39:06,145 - INFO - Ukuran file output: 70016 bytes
+2025-11-15 18:39:06,145 - INFO - Verifikasi integritas output berhasil untuk test_data_kdf/test_input.encrypted
+2025-11-15 18:39:06,145 - INFO - Durasi encrypted: 9.41 detik
+2025-11-15 18:39:06,145 - INFO - Encrypted (simple) berhasil ke file di direktori: test_data_kdf
+2025-11-15 18:39:06,145 - INFO - Memulai decryption file (simple) ke direktori: test_data_kdf
+2025-11-15 18:39:06,145 - INFO - Ukuran file input: 70016 bytes
+2025-11-15 18:39:23,618 - INFO - Ukuran file output: 1024 bytes
+2025-11-15 18:39:23,618 - INFO - Durasi decryption: 17.47 detik
+2025-11-15 18:39:23,618 - INFO - Decryption (simple) berhasil ke file di direktori: test_data_kdf
+2025-11-15 18:39:24,724 - INFO - File 'test_data_utils/wipe_me.txt' dihapus secara aman (1 passes).
+2025-11-15 18:39:24,724 - WARNING - Peringatan validasi untuk input: Password terlalu pendek (kurang dari 12 karakter)., Password hanya berisi huruf., Password tidak memiliki huruf besar., Password tidak memiliki karakter khusus (!@#...).
+2025-11-15 18:39:24,724 - WARNING - Peringatan validasi untuk input: Password hanya berisi huruf., Password tidak memiliki huruf besar., Password tidak memiliki karakter khusus (!@#...).
+2025-11-15 18:39:24,724 - WARNING - Peringatan validasi untuk input: Password hanya berisi angka., Password tidak memiliki karakter khusus (!@#...).
+2025-11-15 18:39:24,724 - INFO - Validasi password/keyfile berhasil.
+2025-11-15 18:39:24,725 - INFO - Cleanup file sementara selesai.

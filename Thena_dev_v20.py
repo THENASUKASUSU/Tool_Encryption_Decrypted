@@ -106,7 +106,7 @@ import struct # Impor struct untuk header dinamis (V12/V13/V14)
 
 # --- Nama File Konfigurasi dan Log ---
 CONFIG_FILE = "thena_config_v19.json"
-LOG_FILE = "thena_encryptor.log"
+LOG_FILE = "aktifitas.log"
 
 # --- Variabel Global untuk Hardening V10/V11/V12/V13/V14 ---
 integrity_hashes = {} # Dict untuk menyimpan hash fungsi
@@ -667,11 +667,8 @@ def setup_logging(interactive_mode=False):
     """Configures the logging for the application."""
     level = getattr(logging, config.get("log_level", "INFO").upper(), logging.INFO)
 
-    # Tentukan handlers berdasarkan mode
+    # Hanya log ke file
     handlers = [logging.FileHandler(LOG_FILE)]
-    # Hanya tambahkan StreamHandler jika tidak dalam mode senyap atau sedang dalam mode interaktif
-    if not SILENT_MODE or interactive_mode:
-        handlers.append(logging.StreamHandler())
 
     logging.basicConfig(
         level=level,
@@ -3792,58 +3789,47 @@ def main():
                     print(f"{YELLOW}Operasi dibatalkan.{RESET}")
                     sys.exit(0)
 
-        if config["encryption_algorithm"] == "hybrid-rsa-x25519":
-            if args.encrypt:
-                rsa_private_key, x25519_private_key = load_keys(password, keyfile_path)
-                if rsa_private_key is None:
-                    print(f"{YELLOW}Kunci tidak ditemukan. Membuat kunci baru...{RESET}")
-                    rsa_private_key, x25519_private_key = generate_and_save_keys(password, keyfile_path)
-                    print(f"{GREEN}Kunci baru berhasil dibuat dan disimpan.{RESET}")
-                encrypt_file_hybrid(input_path, output_path, rsa_private_key, x25519_private_key, hide_paths=hide_paths)
-                print_box(f"Enkripsi selesai: {input_path} -> {output_path}")
-            elif args.decrypt:
-                rsa_private_key, x25519_private_key = load_keys(password, keyfile_path)
-                if rsa_private_key is None:
-                    print_error_box("Gagal memuat kunci. Periksa kata sandi/keyfile Anda.")
+        # Force aes-gcm path and fix function calls
+        if args.encrypt:
+            # CLI mode doesn't support RSA/Curve layers for simplicity for now
+            use_rsa_cli = False
+            use_curve25519_cli = False
+            if CRYPTOGRAPHY_AVAILABLE:
+                master_key = load_or_create_master_key(password, keyfile_path, hide_paths=hide_paths)
+                if master_key is None:
+                    print_error_box("Gagal mendapatkan Master Key.")
                     sys.exit(1)
-                try:
-                    decrypt_file_hybrid(input_path, output_path, rsa_private_key.public_key(), x25519_private_key, hide_paths=hide_paths)
-                    print_box(f"Dekripsi selesai: {input_path} -> {output_path}")
-                except exceptions.InvalidSignature:
-                    print_error_box("Tanda tangan tidak valid. File mungkin rusak atau kunci salah.")
-                    sys.exit(1)
-        else: # aes-gcm
-            if args.encrypt:
-                if CRYPTOGRAPHY_AVAILABLE:
-                    master_key = load_or_create_master_key(password, keyfile_path, hide_paths=hide_paths)
-                    if master_key is None:
-                        print_error_box("Gagal mendapatkan Master Key.")
-                        sys.exit(1)
-                    encryption_success, created_output = encrypt_file_with_master_key(input_path, output_path, master_key, add_random_padding=add_padding, hide_paths=hide_paths)
-                else:
-                    encryption_success, created_output = encrypt_file_simple(input_path, output_path, password, keyfile_path, add_random_padding=add_padding, hide_paths=hide_paths)
-                if encryption_success:
-                    print_box(f"Enkripsi selesai: {input_path} -> {created_output}")
-                else:
-                    print_error_box("Enkripsi gagal.")
-                    sys.exit(1)
-            elif args.decrypt:
-                if CRYPTOGRAPHY_AVAILABLE:
-                    if not os.path.exists(config["master_key_file"]):
-                        print_error_box(f"Error: File Master Key '{config['master_key_file']}' tidak ditemukan. Tidak dapat mendekripsi tanpanya.")
-                        sys.exit(1)
-                    master_key = load_or_create_master_key(password, keyfile_path, hide_paths=hide_paths)
-                    if master_key is None:
-                        print_error_box("Gagal mendapatkan Master Key.")
-                        sys.exit(1)
-                    decryption_success, created_output = decrypt_file_with_master_key(input_path, output_path, master_key, hide_paths=hide_paths)
-                else:
+                encryption_success, created_output = encrypt_file_with_master_key(
+                    input_path, output_path, master_key, password, keyfile_path,
+                    add_random_padding=add_padding, hide_paths=hide_paths,
+                    use_rsa=use_rsa_cli, use_curve25519=use_curve25519_cli
+                )
+            else:
+                encryption_success, created_output = encrypt_file_simple(
+                    input_path, output_path, password, keyfile_path,
+                    add_random_padding=add_padding, hide_paths=hide_paths,
+                    use_rsa=use_rsa_cli, use_curve25519=use_curve25519_cli
+                )
+            if encryption_success:
+                print_box(f"Enkripsi selesai: {input_path} -> {created_output}")
+            else:
+                print_error_box("Enkripsi gagal.")
+                sys.exit(1)
+        elif args.decrypt:
+            if CRYPTOGRAPHY_AVAILABLE:
+                master_key = load_or_create_master_key(password, keyfile_path, hide_paths=hide_paths)
+                if master_key is None:
+                    print(f"{YELLOW}Gagal memuat Master Key. Mencoba mode dekripsi simple...{RESET}")
                     decryption_success, created_output = decrypt_file_simple(input_path, output_path, password, keyfile_path, hide_paths=hide_paths)
-                if decryption_success:
-                    print_box(f"Dekripsi selesai: {input_path} -> {created_output}")
                 else:
-                    print_error_box("Dekripsi gagal.")
-                    sys.exit(1)
+                    decryption_success, created_output = decrypt_file_with_master_key(input_path, output_path, master_key, password, keyfile_path, hide_paths=hide_paths)
+            else:
+                decryption_success, created_output = decrypt_file_simple(input_path, output_path, password, keyfile_path, hide_paths=hide_paths)
+            if decryption_success:
+                print_box(f"Dekripsi selesai: {input_path} -> {created_output}")
+            else:
+                print_error_box("Dekripsi gagal.")
+                sys.exit(1)
 
     else: # Mode Interaktif
         setup_logging(interactive_mode=True)
@@ -3865,9 +3851,6 @@ def main():
             if choice in ['1', '2']:
                 is_encrypt = choice == '1'
                 mode_str = "encrypted" if is_encrypt else "decryption"
-
-                # Hapus pemilihan algoritma
-                encryption_algorithm = "aes-gcm" # Langsung gunakan AES-GCM
 
                 input_path = input(f"{BOLD}Masukkan path file input (untuk {mode_str}): {RESET}").strip()
 
@@ -3960,21 +3943,13 @@ def main():
 
                 if success:
                     if is_encrypt:
-                        delete_original = input(f"{BOLD}Hapus file asli secara AMAN setelah enkripsi? (y/N): {RESET}").strip().lower()
+                        delete_original = input(f"{BOLD}Hapus file asli? (y/N): {RESET}").strip().lower()
                         if delete_original in ['y', 'yes']:
                             secure_wipe_file(input_path)
-                        if keyfile_path:
-                            delete_keyfile = input(f"{BOLD}Hapus keyfile '{keyfile_path}' secara AMAN juga? (y/N): {RESET}").strip().lower()
-                            if delete_keyfile in ['y', 'yes']:
-                                secure_wipe_file(keyfile_path)
                     else: # Decryption
-                        delete_encrypted = input(f"{BOLD}Hapus file terenkripsi setelah dekripsi? (y/N): {RESET}").strip().lower()
+                        delete_encrypted = input(f"{BOLD}Hapus file terenkripsi? (y/N): {RESET}").strip().lower()
                         if delete_encrypted in ['y', 'yes']:
                             secure_wipe_file(input_path)
-                        if keyfile_path:
-                            delete_keyfile = input(f"{BOLD}Hapus keyfile '{keyfile_path}' secara AMAN juga? (y/N): {RESET}").strip().lower()
-                            if delete_keyfile in ['y', 'yes']:
-                                secure_wipe_file(keyfile_path)
 
                 input(f"\n{CYAN}Tekan Enter untuk kembali ke menu utama...{RESET}")
                 clear_screen()
