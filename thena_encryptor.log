@@ -1,0 +1,39 @@
+2025-11-15 05:13:19,543 - INFO - === Encryptor V19 Dimulai ===
+2025-11-15 05:13:19,544 - INFO - Ruang disk cukup. File 'test_data/test_input.txt' (1024 bytes) akan menghasilkan sekitar 66760 bytes di 'test_data'.
+2025-11-15 05:13:19,544 - INFO - Memulai encrypted file (simple) di direktori: test_data
+2025-11-15 05:13:19,544 - INFO - Ukuran file input: 1024 bytes
+2025-11-15 05:13:40,956 - ERROR - Algoritma encrypted 'hybrid-rsa-x25519' tidak dikenal atau tidak didukung di versi ini.
+2025-11-15 05:13:57,628 - INFO - Master Key baru berhasil dibuat dan disimpan.
+2025-11-15 05:13:57,628 - INFO - Ruang disk cukup. File 'test_data/test_input.txt' (1024 bytes) akan menghasilkan sekitar 66760 bytes di 'test_data'.
+2025-11-15 05:13:57,628 - INFO - Memulai encrypted file (dengan Master Key) di direktori: test_data
+2025-11-15 05:13:57,628 - INFO - Ukuran file input: 1024 bytes
+2025-11-15 05:13:57,629 - ERROR - Algoritma encrypted 'hybrid-rsa-x25519' tidak dikenal atau tidak didukung di versi ini.
+2025-11-15 05:13:57,630 - INFO - Cleanup file sementara selesai.
+2025-11-15 05:14:44,649 - INFO - === Encryptor V19 Dimulai ===
+2025-11-15 05:14:44,651 - INFO - Ruang disk cukup. File 'test_data/test_input.txt' (1024 bytes) akan menghasilkan sekitar 66760 bytes di 'test_data'.
+2025-11-15 05:14:44,651 - INFO - Memulai encrypted file (simple) di direktori: test_data
+2025-11-15 05:14:44,651 - INFO - Ukuran file input: 1024 bytes
+2025-11-15 05:15:09,627 - INFO - Ukuran file output: 41373 bytes
+2025-11-15 05:15:09,628 - INFO - Verifikasi integritas output berhasil untuk test_data/test_input.encrypted
+2025-11-15 05:15:09,628 - INFO - Durasi encrypted: 24.98 detik
+2025-11-15 05:15:09,628 - INFO - Encrypted (simple) berhasil ke file di direktori: test_data
+2025-11-15 05:15:09,629 - INFO - Memulai decryption file (simple) ke direktori: test_data
+2025-11-15 05:15:09,629 - INFO - Ukuran file input: 41373 bytes
+2025-11-15 05:15:29,272 - INFO - Ukuran file output: 1024 bytes
+2025-11-15 05:15:29,272 - INFO - Durasi decryption: 19.64 detik
+2025-11-15 05:15:29,272 - INFO - Decryption (simple) berhasil ke file di direktori: test_data
+2025-11-15 05:15:45,993 - INFO - Master Key baru berhasil dibuat dan disimpan.
+2025-11-15 05:15:45,993 - INFO - Ruang disk cukup. File 'test_data/test_input.txt' (1024 bytes) akan menghasilkan sekitar 66760 bytes di 'test_data'.
+2025-11-15 05:15:45,993 - INFO - Memulai encrypted file (dengan Master Key) di direktori: test_data
+2025-11-15 05:15:45,993 - INFO - Ukuran file input: 1024 bytes
+2025-11-15 05:15:47,097 - INFO - Ukuran file output: 37514 bytes
+2025-11-15 05:15:47,098 - INFO - Verifikasi integritas output berhasil untuk test_data/test_input.encrypted
+2025-11-15 05:15:47,098 - INFO - Durasi encrypted: 1.10 detik
+2025-11-15 05:15:47,098 - INFO - Encrypted (dengan Master Key) berhasil ke file di direktori: test_data
+2025-11-15 05:15:47,098 - INFO - Memulai decryption file (dengan Master Key) ke direktori: test_data
+2025-11-15 05:15:47,098 - INFO - Ukuran file input: 37514 bytes
+2025-11-15 05:15:48,202 - INFO - Ukuran file output: 1024 bytes
+2025-11-15 05:15:48,202 - INFO - Durasi decryption: 1.10 detik
+2025-11-15 05:15:48,202 - INFO - Decryption (dengan Master Key) berhasil ke file di direktori: test_data
+2025-11-15 05:15:48,203 - INFO - File Master Key '.master_key_encrypted_v18' dihapus secara otomatis setelah decryption berhasil.
+2025-11-15 05:15:48,204 - INFO - Cleanup file sementara selesai.
