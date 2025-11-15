@@ -23,6 +23,15 @@ BG_MAGENTA = "\033[45m"
 BG_CYAN = "\033[46m"
 BG_WHITE = "\033[47m"
 
+# --- Variabel Global untuk Mode Senyap ---
+SILENT_MODE = False
+
+# --- Fungsi Cetak Kondisional ---
+def cprint(*args, **kwargs):
+    """Hanya mencetak jika SILENT_MODE False."""
+    if not SILENT_MODE:
+        print(*args, **kwargs)
+
 # --- Impor dari cryptography untuk semua KDF, HKDF, Fernet, dan Cipher ---
 try:
     from cryptography.hazmat.primitives.kdf.hkdf import HKDF
@@ -94,15 +103,6 @@ import ctypes.util # Impor ctypes.util untuk secure memory (V10/V11/V12/V13/V14)
 import signal # Impor signal untuk anti-debug (V10/V11/V12/V13/V14)
 import mmap # Impor mmap untuk performa/file besar (V12/V13/V14)
 import struct # Impor struct untuk header dinamis (V12/V13/V14)
-
-# --- Variabel Global untuk Mode Senyap ---
-SILENT_MODE = False
-
-# --- Fungsi Cetak Kondisional ---
-def cprint(*args, **kwargs):
-    """Hanya mencetak jika SILENT_MODE False."""
-    if not SILENT_MODE:
-        print(*args, **kwargs)
 
 # --- Nama File Konfigurasi dan Log ---
 CONFIG_FILE = "thena_config_v19.json"
