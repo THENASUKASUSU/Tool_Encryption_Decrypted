@@ -1933,6 +1933,20 @@ def decrypt_file_simple(input_path: str, output_path: str, password: str, keyfil
                 return False, None
 
             decrypted_key = encrypted_key
+            if "rsa" in key_encryption_method:
+                try:
+                    decrypted_key = rsa_private_key.decrypt(
+                        decrypted_key,
+                        padding.OAEP(
+                            mgf=padding.MGF1(algorithm=hashes.SHA256()),
+                            algorithm=hashes.SHA256(),
+                            label=None
+                        )
+                    )
+                except (ValueError, TypeError):
+                    print_error_box("Gagal dekripsi kunci RSA.")
+                    return False, None
+
             if "x25519" in key_encryption_method:
                 ephemeral_pub_key_bytes = parts_read.get("x25519_ephemeral_pub")
                 nonce_wrap = parts_read.get("x25519_nonce_wrap")
@@ -1948,20 +1962,6 @@ def decrypt_file_simple(input_path: str, output_path: str, password: str, keyfil
                     decrypted_key = AESGCM(wrapping_key).decrypt(nonce_wrap, decrypted_key, None)
                 except exceptions.InvalidTag:
                     print_error_box("Gagal dekripsi kunci Curve25519.")
-                    return False, None
-
-            if "rsa" in key_encryption_method:
-                try:
-                    decrypted_key = rsa_private_key.decrypt(
-                        decrypted_key,
-                        padding.OAEP(
-                            mgf=padding.MGF1(algorithm=hashes.SHA256()),
-                            algorithm=hashes.SHA256(),
-                            label=None
-                        )
-                    )
-                except (ValueError, TypeError):
-                    print_error_box("Gagal dekripsi kunci RSA.")
                     return False, None
 
             key = decrypted_key
@@ -3533,10 +3533,14 @@ def main():
                     continue
 
                 if is_encrypt:
+                    base_dir = os.path.dirname(input_path) or "."
+                    base_name = os.path.splitext(os.path.basename(input_path))[0]
+                    suffix = config.get('output_name_suffix', '')
                     if config.get("disable_timestamp_in_filename", False):
-                         output_path = f"{os.path.splitext(os.path.basename(input_path))[0]}{config.get('output_name_suffix', '')}.encrypted"
+                        filename = f"{base_name}{suffix}.encrypted"
                     else:
-                         output_path = f"{os.path.splitext(os.path.basename(input_path))[0]}_{int(time.time() * 1000)}{config.get('output_name_suffix', '')}.encrypted"
+                        filename = f"{base_name}_{int(time.time() * 1000)}{suffix}.encrypted"
+                    output_path = os.path.join(base_dir, filename)
                 else:
                     output_path = input(f"{BOLD}Masukkan nama file output (nama asli sebelum {mode_str}): {RESET}").strip()
                     if not output_path:

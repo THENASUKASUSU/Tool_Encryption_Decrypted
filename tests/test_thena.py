@@ -5,11 +5,13 @@ import hashlib
 import zlib
 import secrets
 import shutil
+from unittest.mock import patch, call
 
 # Add the root directory to the Python path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from Thena_dev_v20 import (
+    main,
     calculate_checksum,
     compress_data,
     decompress_data,
@@ -237,6 +239,123 @@ class TestAsymmetricEncryption(unittest.TestCase):
         with open(self.decrypted_file, "rb") as f:
             decrypted_data = f.read()
         self.assertEqual(original_data, decrypted_data)
+
+
+class TestInteractiveMenu(unittest.TestCase):
+    def setUp(self):
+        self.test_dir = "test_interactive"
+        os.makedirs(self.test_dir, exist_ok=True)
+        self.input_file = os.path.join(self.test_dir, "test_input.txt")
+        self.encrypted_file = os.path.join(self.test_dir, "test_input.encrypted")
+        self.decrypted_file = os.path.join(self.test_dir, "test_output.txt")
+        with open(self.input_file, "w") as f:
+            f.write("This is a test file for interactive mode.")
+        self.password = "Interactive_P@ssword1"
+        # Ensure config is set to defaults that don't require extra input
+        config['disable_timestamp_in_filename'] = True
+        config['output_name_suffix'] = ''
+
+
+    def tearDown(self):
+        if os.path.exists(self.test_dir):
+            shutil.rmtree(self.test_dir)
+        for key_file in [config.get("rsa_private_key_file"), config.get("x25519_private_key_file"), config.get("master_key_file")]:
+            if key_file and os.path.exists(key_file):
+                os.remove(key_file)
+        if os.path.exists("thena_config_v19.json"):
+            os.remove("thena_config_v19.json")
+
+    @patch('builtins.input')
+    def test_interactive_encryption_workflow(self, mock_input):
+        # Create a dummy file to ensure the overwrite prompt is tested
+        with open(self.encrypted_file, "w") as f:
+            f.write("dummy content")
+
+        # Sequence of inputs for a full encryption workflow
+        mock_input.side_effect = [
+            '1', # Encrypt
+            self.input_file, # Input file path
+            "y", # Overwrite confirmation
+            self.password, # Password
+            'n', # Don't use keyfile
+            'n', # Don't hide paths
+            'n', # Don't add padding
+            'n', # Don't use RSA
+            'n', # Don't use Curve25519
+            'n', # Don't delete original
+            '', # Press Enter to continue
+            '3' # Exit
+        ]
+
+        # We expect the main function to loop until exit, so we catch SystemExit
+        with self.assertRaises(SystemExit):
+            main()
+
+        # Verify the encrypted file was overwritten
+        self.assertTrue(os.path.exists(self.encrypted_file))
+        with open(self.encrypted_file, "rb") as f:
+            content = f.read()
+        self.assertNotEqual(content, b"dummy content")
+        self.assertGreater(len(content), 0)
+
+    @patch('builtins.input')
+    def test_interactive_decryption_workflow(self, mock_input):
+        # First, encrypt a file to create test data
+        master_key = load_or_create_master_key(self.password, None, hide_paths=True)
+        self.assertIsNotNone(master_key)
+        encrypt_success, _ = encrypt_file_with_master_key(
+            self.input_file, self.encrypted_file, master_key, self.password, None, hide_paths=True
+        )
+        self.assertTrue(encrypt_success)
+
+        # Create a dummy file to ensure the overwrite prompt is tested
+        with open(self.decrypted_file, "w") as f:
+            f.write("dummy content")
+
+        # Sequence of inputs for a full decryption workflow
+        mock_input.side_effect = [
+            '2', # Decrypt
+            self.encrypted_file, # Input file path
+            self.decrypted_file, # Output file path
+            "y", # Overwrite confirmation
+            self.password, # Password
+            'n', # Don't use keyfile
+            'n', # Don't hide paths
+            'n', # Don't delete encrypted file
+            '', # Press Enter to continue
+            '3' # Exit
+        ]
+
+        # We expect the main function to loop until exit, so we catch SystemExit
+        with self.assertRaises(SystemExit):
+            main()
+
+        # Verify the file was decrypted correctly
+        self.assertTrue(os.path.exists(self.decrypted_file))
+        with open(self.input_file, "rb") as f:
+            original_data = f.read()
+        with open(self.decrypted_file, "rb") as f:
+            decrypted_data = f.read()
+        self.assertEqual(original_data, decrypted_data)
+
+    @patch('builtins.input')
+    @patch('builtins.print')
+    def test_interactive_invalid_file_path(self, mock_print, mock_input):
+        # Sequence of inputs for invalid file path
+        mock_input.side_effect = [
+            '1', # Encrypt
+            'non_existent_file.txt', # Invalid file path
+            '', # Press Enter to continue
+            '3' # Exit
+        ]
+
+        # We expect the main function to loop until exit, so we catch SystemExit
+        with self.assertRaises(SystemExit):
+            main()
+
+        # Verify that an error message was printed
+        error_message_found = any("File input tidak ditemukan" in call.args[0] for call in mock_print.call_args_list)
+        self.assertTrue(error_message_found, "Error message for invalid file path was not found.")
 
 if __name__ == '__main__':
     unittest.main()
