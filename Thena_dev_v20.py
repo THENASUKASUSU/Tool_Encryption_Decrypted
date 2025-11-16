@@ -692,6 +692,13 @@ def print_error_box(message, width=80):
     print(f"{border_color}│{reset} {text_color}{message.center(width - 4)}{reset} {border_color}│{reset}")
     print(f"{border_color}╰" + "─" * (width - 2) + f"╯{reset}")
 
+def print_error_and_reset(message):
+    """Clears the screen, prints an error message, and waits for user input to continue."""
+    clear_screen()
+    print_error_box(message)
+    input(f"\n{CYAN}Tekan Enter untuk kembali ke menu utama...{RESET}")
+    clear_screen()
+
 def print_loading_progress():
     """Prints a simple loading progress indicator to the console."""
     for i in range(11):
@@ -894,17 +901,20 @@ def validate_password_keyfile(password: str, keyfile_path: str, interactive: boo
                 logger.warning(f"Tidak bisa membaca izin file keyfile '{keyfile_path}'.")
 
     if issues:
-        print(f"{YELLOW}⚠️  Peringatan Validasi:{RESET}")
+        cprint(f"{YELLOW}⚠️  Peringatan Validasi:{RESET}")
         for issue in issues:
-            print(f"   - {issue}")
+            cprint(f"   - {issue}")
         logger.warning(f"Peringatan validasi untuk input: {', '.join(issues)}")
-        if interactive:
+        if interactive and not SILENT_MODE:
             confirm = input(f"{YELLOW}Lanjutkan proses? (y/N): {RESET}").strip().lower()
             if confirm not in ['y', 'yes']:
-                print(f"{YELLOW}Operasi dibatalkan.{RESET}")
+                cprint(f"{YELLOW}Operasi dibatalkan.{RESET}")
                 logger.info("Operasi dibatalkan berdasarkan validasi input pengguna.")
                 return False
-        else:
+        elif SILENT_MODE:
+             # Dalam mode senyap, lanjutkan saja jika tidak interaktif
+             pass
+        else: # Non-interaktif dan tidak senyap
             return False
     else:
         logger.info("Validasi password/keyfile berhasil.")
@@ -3859,14 +3869,11 @@ def main():
                 input_path = input(f"{BOLD}Masukkan path file input (untuk {mode_str}): {RESET}").strip()
 
                 if not os.path.isfile(input_path):
-                    print_error_box("File input tidak ditemukan.")
-                    input(f"\n{CYAN}Tekan Enter untuk kembali ke menu utama...{RESET}")
-                    clear_screen()
+                    print_error_and_reset("File input tidak ditemukan.")
                     continue
 
                 if not check_file_size_limit(input_path):
-                    input(f"\n{CYAN}Tekan Enter untuk kembali ke menu utama...{RESET}")
-                    clear_screen()
+                    print_error_and_reset("Ukuran file melebihi batas maksimal.")
                     continue
 
                 if is_encrypt:
@@ -3877,18 +3884,14 @@ def main():
                 else:
                     output_path = input(f"{BOLD}Masukkan nama file output (nama asli sebelum {mode_str}): {RESET}").strip()
                     if not output_path:
-                        print_error_box("Nama file output tidak boleh kosong.")
-                        input(f"\n{CYAN}Tekan Enter untuk kembali ke menu utama...{RESET}")
-                        clear_screen()
+                        print_error_and_reset("Nama file output tidak boleh kosong.")
                         continue
                 if not confirm_overwrite(output_path):
                     continue
 
                 password = input(f"{BOLD}Masukkan kata sandi: {RESET}").strip()
                 if not password:
-                    print_error_box("Kata sandi tidak boleh kosong.")
-                    input(f"\n{CYAN}Tekan Enter untuk kembali ke menu utama...{RESET}")
-                    clear_screen()
+                    print_error_and_reset("Kata sandi tidak boleh kosong.")
                     continue
 
                 use_keyfile = input(f"{BOLD}Gunakan Keyfile? (y/N): {RESET}").strip().lower()
@@ -3896,9 +3899,7 @@ def main():
                 if use_keyfile in ['y', 'yes']:
                     keyfile_path = input(f"{BOLD}Masukkan path Keyfile: {RESET}").strip()
                     if not os.path.isfile(keyfile_path):
-                        print_error_box("File keyfile tidak ditemukan.")
-                        input(f"\n{CYAN}Tekan Enter untuk kembali ke menu utama...{RESET}")
-                        clear_screen()
+                        print_error_and_reset("File keyfile tidak ditemukan.")
                         continue
 
                 if not validate_password_keyfile(password, keyfile_path):
@@ -3914,7 +3915,19 @@ def main():
                     add_pad = input(f"{BOLD}Tambahkan padding acak? (y/N): {RESET}").strip().lower()
                     add_padding = add_pad not in ['n', 'no']
 
-                    # Enkripsi awal dengan AES
+                    # Tanyakan opsi keamanan tambahan di awal
+                    use_rsa = False
+                    use_curve25519 = False
+                    if CRYPTOGRAPHY_AVAILABLE:
+                        use_rsa_input = input(f"{BOLD}Gunakan RSA untuk mengamankan kunci AES? (y/N): {RESET}").strip().lower()
+                        if use_rsa_input in ['y', 'yes']:
+                            use_rsa = True
+
+                        use_curve25519_input = input(f"{BOLD}Gunakan Curve25519 untuk lapisan tambahan? (y/N): {RESET}").strip().lower()
+                        if use_curve25519_input in ['y', 'yes']:
+                            use_curve25519 = True
+
+                    # Enkripsi dalam satu langkah
                     master_key = load_or_create_master_key(password, keyfile_path, hide_paths=hide_paths)
                     if master_key is None:
                         print_error_box("Gagal mendapatkan Master Key. Operasi dibatalkan.")
@@ -3923,44 +3936,16 @@ def main():
                     success, encrypted_path = encrypt_file_with_master_key(
                         input_path, output_path, master_key, password, keyfile_path,
                         add_random_padding=add_padding, hide_paths=hide_paths,
-                        use_rsa=False, use_curve25519=False
+                        use_rsa=use_rsa, use_curve25519=use_curve25519
                     )
 
-                    if not success:
-                        print_error_box("Enkripsi awal dengan AES gagal.")
+                    if success:
+                        delete_original = input(f"{BOLD}Hapus file asli secara AMAN? (y/N): {RESET}").strip().lower()
+                        if delete_original in ['y', 'yes']:
+                            secure_wipe_file(input_path)
+                    else:
+                        print_error_box("Enkripsi gagal.")
                         continue
-
-                    # Opsi keamanan tambahan
-                    if CRYPTOGRAPHY_AVAILABLE:
-                        use_rsa_input = input(f"{BOLD}Gunakan RSA untuk mengamankan kunci AES? (y/N): {RESET}").strip().lower()
-                        if use_rsa_input in ['y', 'yes']:
-                            success, rsa_encrypted_path = encrypt_file_with_master_key(
-                                encrypted_path, output_path, master_key, password, keyfile_path,
-                                add_random_padding=False, hide_paths=hide_paths,
-                                use_rsa=True, use_curve25519=False
-                            )
-                            if success:
-                                encrypted_path = rsa_encrypted_path
-                            else:
-                                print_error_box("Enkripsi dengan RSA gagal.")
-                                continue
-
-                        use_curve25519_input = input(f"{BOLD}Gunakan Curve25519 untuk lapisan tambahan? (y/N): {RESET}").strip().lower()
-                        if use_curve25519_input in ['y', 'yes']:
-                            success, curve_encrypted_path = encrypt_file_with_master_key(
-                                encrypted_path, output_path, master_key, password, keyfile_path,
-                                add_random_padding=False, hide_paths=hide_paths,
-                                use_rsa='rsa' in locals(), use_curve25519=True
-                            )
-                            if success:
-                                encrypted_path = curve_encrypted_path
-                            else:
-                                print_error_box("Enkripsi dengan Curve25519 gagal.")
-                                continue
-
-                    delete_original = input(f"{BOLD}Hapus file asli secara AMAN? (y/N): {RESET}").strip().lower()
-                    if delete_original in ['y', 'yes']:
-                        secure_wipe_file(input_path)
 
                 else: # Decryption
                     master_key = load_or_create_master_key(password, keyfile_path, hide_paths=hide_paths)

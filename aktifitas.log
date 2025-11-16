@@ -496,3 +496,29 @@
 2025-11-15 20:44:54,723 - WARNING - Peringatan validasi untuk input: Password hanya berisi angka., Password tidak memiliki karakter khusus (!@#...).
 2025-11-15 20:44:54,723 - INFO - Validasi password/keyfile berhasil.
 2025-11-15 20:44:54,724 - INFO - Cleanup file sementara selesai.
+2025-11-16 04:44:01,483 - INFO - === Encryptor V19 Dimulai ===
+2025-11-16 04:44:01,485 - WARNING - Peringatan validasi untuk input: Password hanya berisi huruf., Password tidak memiliki huruf besar., Password tidak memiliki karakter khusus (!@#...).
+2025-11-16 04:44:01,490 - INFO - Cleanup file sementara selesai.
+2025-11-16 04:44:01,989 - INFO - === Encryptor V19 Dimulai ===
+2025-11-16 04:44:01,992 - INFO - Cleanup file sementara selesai.
+2025-11-16 04:44:35,349 - INFO - === Encryptor V19 Dimulai ===
+2025-11-16 04:44:35,351 - WARNING - Peringatan validasi untuk input: Password hanya berisi huruf., Password tidak memiliki huruf besar., Password tidak memiliki karakter khusus (!@#...).
+2025-11-16 04:44:58,104 - INFO - Master Key baru berhasil dibuat dan disimpan.
+2025-11-16 04:44:58,104 - INFO - Ruang disk cukup. File 'README.md' (5830 bytes) akan menghasilkan sekitar 71566 bytes di '.'.
+2025-11-16 04:44:58,105 - INFO - Memulai encrypted file (dengan Master Key): README.md
+2025-11-16 04:44:58,105 - INFO - Ukuran file input: 5830 bytes
+2025-11-16 04:44:59,210 - INFO - Ukuran file output: 27722 bytes
+2025-11-16 04:44:59,211 - INFO - Verifikasi integritas output berhasil untuk README.md.encrypted
+2025-11-16 04:44:59,211 - INFO - Durasi encrypted: 1.11 detik
+2025-11-16 04:44:59,211 - INFO - Encrypted (dengan Master Key) berhasil: README.md -> README.md.encrypted
+2025-11-16 04:44:59,213 - INFO - Cleanup file sementara selesai.
+2025-11-16 04:44:59,696 - INFO - === Encryptor V19 Dimulai ===
+2025-11-16 04:44:59,698 - WARNING - Peringatan validasi untuk input: Password hanya berisi huruf., Password tidak memiliki huruf besar., Password tidak memiliki karakter khusus (!@#...).
+2025-11-16 04:45:16,869 - INFO - Master Key berhasil dimuat dari file.
+2025-11-16 04:45:16,869 - INFO - Memulai decryption file (dengan Master Key): README.md.encrypted
+2025-11-16 04:45:16,869 - INFO - Ukuran file input: 27722 bytes
+2025-11-16 04:45:17,973 - INFO - Ukuran file output: 5830 bytes
+2025-11-16 04:45:17,973 - INFO - Durasi decryption: 1.10 detik
+2025-11-16 04:45:17,974 - INFO - Decryption (dengan Master Key) berhasil dan checksum cocok: README.md.encrypted -> README.md.decrypted
+2025-11-16 04:45:17,974 - INFO - File Master Key '.master_key_encrypted_v18' dihapus secara otomatis setelah decryption berhasil.
+2025-11-16 04:45:17,975 - INFO - Cleanup file sementara selesai.
