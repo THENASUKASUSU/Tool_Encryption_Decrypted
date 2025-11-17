@@ -1282,7 +1282,7 @@ def load_or_create_master_key(password: str, keyfile_path: str, hide_paths: bool
             with open(config["master_key_file"], 'rb') as f:
                 salt = f.read(config["master_key_salt_len"])
                 if len(salt) != config["master_key_salt_len"]:
-                    print(f"{RED}❌ Error: File Master Key rusak (salt tidak valid).{RESET}")
+                    print_error_box("Error: File Master Key rusak (salt tidak valid).")
                     logger.error("File Master Key rusak (salt tidak valid).")
                     return None
                 encrypted_master_key_data = f.read()
@@ -1297,14 +1297,14 @@ def load_or_create_master_key(password: str, keyfile_path: str, hide_paths: bool
                     print(f"{GREEN}✅ Master Key berhasil dimuat.{RESET}")
                     logger.info("Master Key berhasil dimuat dari file.")
                 except Exception as e:
-                    print(f"{RED}❌ Error: Gagal mendecryption Master Key. Password/Keyfile mungkin salah.{RESET}")
+                    print_error_box("Error: Gagal mendekripsi Master Key. Password/Keyfile mungkin salah.")
                     logger.error(f"Gagal mendecryption Master Key: {e}")
                     return None
         except FileNotFoundError:
             if hide_paths:
-                print(f"{RED}❌ Error: File Master Key tidak ditemukan.{RESET}")
+                print_error_box("Error: File Master Key tidak ditemukan.")
             else:
-                print(f"{RED}❌ Error: File Master Key '{config['master_key_file']}' tidak ditemukan.{RESET}")
+                print_error_box(f"Error: File Master Key '{config['master_key_file']}' tidak ditemukan.")
             logger.error(f"File Master Key '{config['master_key_file']}' tidak ditemukan.")
             return None
     else:
@@ -1787,17 +1787,17 @@ def decrypt_file_simple(input_path: str, output_path: str, password: str, keyfil
     start_time = time.time()
 
     if not os.path.isfile(input_path):
-        print(f"{RED}❌ Error: File input '{input_path}' tidak ditemukan.{RESET}")
+        print_error_box(f"Error: File input '{input_path}' tidak ditemukan.")
         logger.error(f"File input '{input_path}' tidak ditemukan.")
         return False, None
 
     if not os.access(input_path, os.R_OK):
-        print(f"{RED}❌ Error: File input '{input_path}' tidak dapat dibaca.{RESET}")
+        print_error_box(f"Error: File input '{input_path}' tidak dapat dibaca.")
         logger.error(f"File input '{input_path}' tidak dapat dibaca (izin akses).")
         return False, None
 
     if os.path.getsize(input_path) == 0:
-        print(f"{RED}❌ Error: File input '{input_path}' kosong.{RESET}")
+        print_error_box(f"Error: File input '{input_path}' kosong.")
         logger.error(f"File input '{input_path}' kosong.")
         return False, None
 
@@ -2115,17 +2115,17 @@ def encrypt_file_with_master_key(input_path: str, output_path: str, master_key: 
     output_dir = os.path.dirname(output_path) or "."
 
     if not os.path.isfile(input_path):
-        print(f"{RED}❌ Error: File input '{input_path}' tidak ditemukan.{RESET}")
+        print_error_box(f"Error: File input '{input_path}' tidak ditemukan.")
         logger.error(f"File input '{input_path}' tidak ditemukan.")
         return False, None
 
     if not os.access(input_path, os.R_OK):
-        print(f"{RED}❌ Error: File input '{input_path}' tidak dapat dibaca.{RESET}")
+        print_error_box(f"Error: File input '{input_path}' tidak dapat dibaca.")
         logger.error(f"File input '{input_path}' tidak dapat dibaca (izin akses).")
         return False, None
 
     if os.path.getsize(input_path) == 0:
-        print(f"{RED}❌ Error: File input '{input_path}' kosong.{RESET}")
+        print_error_box(f"Error: File input '{input_path}' kosong.")
         logger.error(f"File input '{input_path}' kosong.")
         return False, None
 
@@ -2548,17 +2548,17 @@ def encrypt_file_with_master_key(input_path: str, output_path: str, master_key: 
     output_dir = os.path.dirname(output_path) or "."
 
     if not os.path.isfile(input_path):
-        print(f"{RED}❌ Error: File input '{input_path}' tidak ditemukan.{RESET}")
+        print_error_box(f"Error: File input '{input_path}' tidak ditemukan.")
         logger.error(f"File input '{input_path}' tidak ditemukan.")
         return False, None
 
     if not os.access(input_path, os.R_OK):
-        print(f"{RED}❌ Error: File input '{input_path}' tidak dapat dibaca.{RESET}")
+        print_error_box(f"Error: File input '{input_path}' tidak dapat dibaca.")
         logger.error(f"File input '{input_path}' tidak dapat dibaca (izin akses).")
         return False, None
 
     if os.path.getsize(input_path) == 0:
-        print(f"{RED}❌ Error: File input '{input_path}' kosong.{RESET}")
+        print_error_box(f"Error: File input '{input_path}' kosong.")
         logger.error(f"File input '{input_path}' kosong.")
         return False, None
 
@@ -2852,17 +2852,17 @@ def decrypt_file_with_master_key(input_path: str, output_path: str, master_key: 
     start_time = time.time()
 
     if not os.path.isfile(input_path):
-        print(f"{RED}❌ Error: File input '{input_path}' tidak ditemukan.{RESET}")
+        print_error_box(f"Error: File input '{input_path}' tidak ditemukan.")
         logger.error(f"File input '{input_path}' tidak ditemukan.")
         return False, None
 
     if not os.access(input_path, os.R_OK):
-        print(f"{RED}❌ Error: File input '{input_path}' tidak dapat dibaca.{RESET}")
+        print_error_box(f"Error: File input '{input_path}' tidak dapat dibaca.")
         logger.error(f"File input '{input_path}' tidak dapat dibaca (izin akses).")
         return False, None
 
     if os.path.getsize(input_path) == 0:
-        print(f"{RED}❌ Error: File input '{input_path}' kosong.{RESET}")
+        print_error_box(f"Error: File input '{input_path}' kosong.")
         logger.error(f"File input '{input_path}' kosong.")
         return False, None
 
@@ -3506,152 +3506,155 @@ def main():
         clear_screen()
 
         while True:
-            print_box(
-                f"Thena_Dev Script V18",
-                [
-                    "1. Encrypted File",
-                    "2. Decryption File",
-                    "3. Exit"
-                ],
-                width=80
-            )
+            try:
+                print_box(
+                    f"Thena_Dev Script V18",
+                    [
+                        "1. Encrypted File",
+                        "2. Decryption File",
+                        "3. Exit"
+                    ],
+                    width=80
+                )
 
-            choice = input(f"\n{BOLD}Masukkan pilihan: {RESET}").strip()
+                choice = input(f"\n{BOLD}Masukkan pilihan: {RESET}").strip()
 
-            if choice in ['1', '2']:
-                is_encrypt = choice == '1'
-                mode_str = "encrypted" if is_encrypt else "decryption"
+                if choice in ['1', '2']:
+                    is_encrypt = choice == '1'
+                    mode_str = "encrypted" if is_encrypt else "decryption"
 
-                input_path = input(f"{BOLD}Masukkan path file input (untuk {mode_str}): {RESET}").strip()
+                    input_path = input(f"{BOLD}Masukkan path file input (untuk {mode_str}): {RESET}").strip()
 
-                if not os.path.isfile(input_path):
-                    print_error_and_reset("File input tidak ditemukan.")
-                    continue
+                    if not os.path.isfile(input_path):
+                        print_error_and_reset("File input tidak ditemukan.")
+                        continue
 
-                if not check_file_size_limit(input_path):
-                    print_error_and_reset("Ukuran file melebihi batas maksimal.")
-                    continue
+                    if not check_file_size_limit(input_path):
+                        print_error_and_reset("Ukuran file melebihi batas maksimal.")
+                        continue
 
-                if is_encrypt:
-                    base_dir = os.path.dirname(input_path) or "."
-                    base_name = os.path.splitext(os.path.basename(input_path))[0]
-                    suffix = config.get('output_name_suffix', '')
-                    if config.get("disable_timestamp_in_filename", False):
-                        filename = f"{base_name}{suffix}.encrypted"
+                    if is_encrypt:
+                        base_dir = os.path.dirname(input_path) or "."
+                        base_name = os.path.splitext(os.path.basename(input_path))[0]
+                        suffix = config.get('output_name_suffix', '')
+                        if config.get("disable_timestamp_in_filename", False):
+                            filename = f"{base_name}{suffix}.encrypted"
+                        else:
+                            filename = f"{base_name}_{int(time.time() * 1000)}{suffix}.encrypted"
+                        output_path = os.path.join(base_dir, filename)
                     else:
-                        filename = f"{base_name}_{int(time.time() * 1000)}{suffix}.encrypted"
-                    output_path = os.path.join(base_dir, filename)
-                else:
-                    output_path = input(f"{BOLD}Masukkan nama file output (nama asli sebelum {mode_str}): {RESET}").strip()
-                    if not output_path:
-                        print_error_and_reset("Nama file output tidak boleh kosong.")
-                        continue
-                if not confirm_overwrite(output_path):
-                    continue
-
-                password = input(f"{BOLD}Masukkan kata sandi: {RESET}").strip()
-                if not password:
-                    print_error_and_reset("Kata sandi tidak boleh kosong.")
-                    continue
-
-                use_keyfile = input(f"{BOLD}Gunakan Keyfile? (y/N): {RESET}").strip().lower()
-                keyfile_path = None
-                if use_keyfile in ['y', 'yes']:
-                    keyfile_path = input(f"{BOLD}Masukkan path Keyfile: {RESET}").strip()
-                    if not os.path.isfile(keyfile_path):
-                        print_error_and_reset("File keyfile tidak ditemukan.")
+                        output_path = input(f"{BOLD}Masukkan nama file output (nama asli sebelum {mode_str}): {RESET}").strip()
+                        if not output_path:
+                            print_error_and_reset("Nama file output tidak boleh kosong.")
+                            continue
+                    if not confirm_overwrite(output_path):
                         continue
 
-                if not validate_password_keyfile(password, keyfile_path):
-                    continue
+                    password = input(f"{BOLD}Masukkan kata sandi: {RESET}").strip()
+                    if not password:
+                        print_error_and_reset("Kata sandi tidak boleh kosong.")
+                        continue
 
-                hide_paths_input = input(f"{BOLD}Sembunyikan path file di output layar? (y/N): {RESET}").strip().lower()
-                hide_paths = hide_paths_input in ['y', 'yes']
+                    use_keyfile = input(f"{BOLD}Gunakan Keyfile? (y/N): {RESET}").strip().lower()
+                    keyfile_path = None
+                    if use_keyfile in ['y', 'yes']:
+                        keyfile_path = input(f"{BOLD}Masukkan path Keyfile: {RESET}").strip()
+                        if not os.path.isfile(keyfile_path):
+                            print_error_and_reset("File keyfile tidak ditemukan.")
+                            continue
 
-                if is_encrypt:
+                    if not validate_password_keyfile(password, keyfile_path):
+                        continue
+
+                    hide_paths_input = input(f"{BOLD}Sembunyikan path file di output layar? (y/N): {RESET}").strip().lower()
+                    hide_paths = hide_paths_input in ['y', 'yes']
+
+                    if is_encrypt:
+                        cprint("\n" + "─" * 50)
+                        cprint(f"{YELLOW}⚠️  Gunakan password dan keyfile yang SANGAT KUAT!{RESET}")
+                        cprint("─" * 50)
+                        add_pad = input(f"{BOLD}Tambahkan padding acak? (y/N): {RESET}").strip().lower()
+                        add_padding = add_pad not in ['n', 'no']
+
+                        # Tanyakan opsi keamanan tambahan di awal
+                        use_rsa = False
+                        use_curve25519 = False
+                        if CRYPTOGRAPHY_AVAILABLE:
+                            use_rsa_input = input(f"{BOLD}Gunakan RSA untuk mengamankan kunci AES? (y/N): {RESET}").strip().lower()
+                            if use_rsa_input in ['y', 'yes']:
+                                use_rsa = True
+
+                            use_curve25519_input = input(f"{BOLD}Gunakan Curve25519 untuk lapisan tambahan? (y/N): {RESET}").strip().lower()
+                            if use_curve25519_input in ['y', 'yes']:
+                                use_curve25519 = True
+
+                        # Enkripsi dalam satu langkah
+                        master_key = load_or_create_master_key(password, keyfile_path, hide_paths=hide_paths)
+                        if master_key is None:
+                            continue
+
+                        success, encrypted_path = encrypt_file_with_master_key(
+                            input_path, output_path, master_key, password, keyfile_path,
+                            add_random_padding=add_padding, hide_paths=hide_paths,
+                            use_rsa=use_rsa, use_curve25519=use_curve25519
+                        )
+
+                        if success:
+                            delete_original = input(f"{BOLD}Hapus file asli secara AMAN? (y/N): {RESET}").strip().lower()
+                            if delete_original in ['y', 'yes']:
+                                secure_wipe_file(input_path)
+                        else:
+                            print_error_box("Enkripsi gagal.")
+
+                    else: # Decryption
+                        master_key = load_or_create_master_key(password, keyfile_path, hide_paths=hide_paths)
+                        if master_key is None:
+                            continue
+
+                        success, _ = decrypt_file_with_master_key(
+                            input_path, output_path, master_key, password, keyfile_path, hide_paths=hide_paths
+                        )
+
+                        if success:
+                            delete_encrypted = input(f"{BOLD}Hapus file terenkripsi? (y/N): {RESET}").strip().lower()
+                            if delete_encrypted in ['y', 'yes']:
+                                secure_wipe_file(input_path)
+
+                    input(f"\n{CYAN}Tekan Enter untuk kembali ke menu utama...{RESET}")
+                    clear_screen()
+
+                elif choice == '3':
                     cprint("\n" + "─" * 50)
-                    cprint(f"{YELLOW}⚠️  Gunakan password dan keyfile yang SANGAT KUAT!{RESET}")
-                    cprint("─" * 50)
-                    add_pad = input(f"{BOLD}Tambahkan padding acak? (y/N): {RESET}").strip().lower()
-                    add_padding = add_pad not in ['n', 'no']
-
-                    # Tanyakan opsi keamanan tambahan di awal
-                    use_rsa = False
-                    use_curve25519 = False
+                    cprint(f"{GREEN}✅ Keluar dari program V19.{RESET}")
+                    cprint(f"{YELLOW}⚠️  Ingat:{RESET}")
+                    cprint(f"{YELLOW}  - Simpan password Anda dengan aman.{RESET}")
                     if CRYPTOGRAPHY_AVAILABLE:
-                        use_rsa_input = input(f"{BOLD}Gunakan RSA untuk mengamankan kunci AES? (y/N): {RESET}").strip().lower()
-                        if use_rsa_input in ['y', 'yes']:
-                            use_rsa = True
-
-                        use_curve25519_input = input(f"{BOLD}Gunakan Curve25519 untuk lapisan tambahan? (y/N): {RESET}").strip().lower()
-                        if use_curve25519_input in ['y', 'yes']:
-                            use_curve25519 = True
-
-                    # Enkripsi dalam satu langkah
-                    master_key = load_or_create_master_key(password, keyfile_path, hide_paths=hide_paths)
-                    if master_key is None:
-                        print_error_box("Gagal mendapatkan Master Key. Operasi dibatalkan.")
-                        continue
-
-                    success, encrypted_path = encrypt_file_with_master_key(
-                        input_path, output_path, master_key, password, keyfile_path,
-                        add_random_padding=add_padding, hide_paths=hide_paths,
-                        use_rsa=use_rsa, use_curve25519=use_curve25519
-                    )
-
-                    if success:
-                        delete_original = input(f"{BOLD}Hapus file asli secara AMAN? (y/N): {RESET}").strip().lower()
-                        if delete_original in ['y', 'yes']:
-                            secure_wipe_file(input_path)
+                        print(f"{YELLOW}  - Jaga keamanan file '{config['master_key_file']}' dan keyfile Anda.{RESET}")
                     else:
-                        print_error_box("Enkripsi gagal.")
-                        continue
+                        print(f"{YELLOW}  - Jaga keamanan keyfile Anda.{RESET}")
+                    print(f"{YELLOW}  - Cadangkan file penting Anda.{RESET}")
+                    print(f"{YELLOW}  - Gunakan perangkat ini dengan bijak.{RESET}")
+                    print("─" * 50)
+                    logger.info(f"=== Encryptor V18 ({'With Advanced Features (cryptography)' if CRYPTOGRAPHY_AVAILABLE else 'Simple Mode (pycryptodome)'}) Selesai ===")
+                    print("─" * 50)
 
-                else: # Decryption
-                    master_key = load_or_create_master_key(password, keyfile_path, hide_paths=hide_paths)
-                    if master_key is None:
-                        print_error_box("Gagal mendapatkan Master Key. Operasi dibatalkan.")
-                        continue
+                    # --- V10: Hentikan Thread Integrity ---
+                    if integrity_thread and config.get("enable_runtime_integrity", False):
+                        stop_integrity_check.set()
+                        integrity_thread.join(timeout=5) # Tunggu maksimal 5 detik
+                        logger.info("Thread integrity checker dihentikan.")
+                    sys.exit(0)
 
-                    success, _ = decrypt_file_with_master_key(
-                        input_path, output_path, master_key, password, keyfile_path, hide_paths=hide_paths
-                    )
-
-                    if success:
-                        delete_encrypted = input(f"{BOLD}Hapus file terenkripsi? (y/N): {RESET}").strip().lower()
-                        if delete_encrypted in ['y', 'yes']:
-                            secure_wipe_file(input_path)
-
-                input(f"\n{CYAN}Tekan Enter untuk kembali ke menu utama...{RESET}")
-                clear_screen()
-
-            elif choice == '3':
-                cprint("\n" + "─" * 50)
-                cprint(f"{GREEN}✅ Keluar dari program V19.{RESET}")
-                cprint(f"{YELLOW}⚠️  Ingat:{RESET}")
-                cprint(f"{YELLOW}  - Simpan password Anda dengan aman.{RESET}")
-                if CRYPTOGRAPHY_AVAILABLE:
-                    print(f"{YELLOW}  - Jaga keamanan file '{config['master_key_file']}' dan keyfile Anda.{RESET}")
                 else:
-                    print(f"{YELLOW}  - Jaga keamanan keyfile Anda.{RESET}")
-                print(f"{YELLOW}  - Cadangkan file penting Anda.{RESET}")
-                print(f"{YELLOW}  - Gunakan perangkat ini dengan bijak.{RESET}")
-                print("─" * 50)
-                logger.info(f"=== Encryptor V18 ({'With Advanced Features (cryptography)' if CRYPTOGRAPHY_AVAILABLE else 'Simple Mode (pycryptodome)'}) Selesai ===")
-                print("─" * 50)
-
-                # --- V10: Hentikan Thread Integrity ---
-                if integrity_thread and config.get("enable_runtime_integrity", False):
-                    stop_integrity_check.set()
-                    integrity_thread.join(timeout=5) # Tunggu maksimal 5 detik
-                    logger.info("Thread integrity checker dihentikan.")
-                sys.exit(0)
-
-            else:
-                print_error_box("Pilihan tidak valid. Silakan coba lagi.")
-                logger.warning(f"Pilihan tidak valid dimasukkan: {choice}")
-                input(f"\n{CYAN}Tekan Enter untuk kembali ke menu utama...{RESET}")
-                clear_screen()
+                    print_error_box("Pilihan tidak valid. Silakan coba lagi.")
+                    logger.warning(f"Pilihan tidak valid dimasukkan: {choice}")
+                    input(f"\n{CYAN}Tekan Enter untuk kembali ke menu utama...{RESET}")
+                    clear_screen()
+            except KeyboardInterrupt:
+                print_error_and_reset("Operasi dibatalkan oleh pengguna (Ctrl+C).")
+            except Exception as e:
+                logger.error("Terjadi galat tak terduga di menu interaktif.", exc_info=True)
+                print_error_and_reset(f"Terjadi galat tak terduga: {e}")
 
 if __name__ == "__main__":
     main()
