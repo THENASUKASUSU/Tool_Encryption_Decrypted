@@ -666,7 +666,8 @@ def setup_logging(interactive_mode=False):
     logging.basicConfig(
         level=level,
         format='%(asctime)s - %(levelname)s - %(message)s',
-        handlers=handlers
+        handlers=handlers,
+        force=True
     )
     logger = logging.getLogger(__name__)
     logger.info("=== Encryptor V18 Dimulai ===")

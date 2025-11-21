@@ -1,0 +1,5 @@
+2025-11-21 02:18:29,381 - INFO - === Encryptor V18 Dimulai ===
+2025-11-21 02:18:29,385 - INFO - === Encryptor V18 Dimulai ===
+2025-11-21 02:18:29,400 - WARNING - Peringatan validasi untuk input: Password terlalu pendek (kurang dari 12 karakter)., Password tidak memiliki huruf besar., Password tidak memiliki karakter khusus (!@#...).
+2025-11-21 02:18:29,401 - INFO - Operasi dibatalkan berdasarkan validasi input pengguna.
+2025-11-21 02:18:29,419 - INFO - Cleanup file sementara selesai.
