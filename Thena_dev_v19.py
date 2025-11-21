@@ -3463,23 +3463,19 @@ def interactive_encrypt():
             return
 
         # --- Base Encryption Layer ---
-        print_box("Pilih Algoritma Enkripsi Dasar", ["1. AES-GCM", "2. ChaCha20-Poly1305"])
-        algo_choice = input(f"\n{BOLD}Pilihan algoritma: {RESET}").strip()
-
-        if algo_choice == '1':
-            base_algorithm = "aes-gcm"
-        elif algo_choice == '2':
-            base_algorithm = "chacha20-poly1305"
-        else:
-            print_error_box("Pilihan algoritma tidak valid.")
-            return
+        # Defaulting to AES-GCM as the base algorithm to simplify the workflow.
+        base_algorithm = "aes-gcm"
 
         encryption_layers = [base_algorithm]
 
         current_file = input_path
 
-        # Create a temporary file for the base encryption
-        temp_output_path = create_temp_file(suffix=".layer1.tmp")
+        # Layered encryption requires temporary files.
+        temp_dir = config.get("temp_dir", "./temp_thena")
+        os.makedirs(temp_dir, exist_ok=True)
+        temp_fd, temp_output_path = tempfile.mkstemp(suffix=".layer1.tmp", dir=temp_dir)
+        os.close(temp_fd)
+        temp_files_created.add(temp_output_path)
 
         # Using a temporary copy of config to change algorithm
         original_algorithm = config["encryption_algorithm"]
