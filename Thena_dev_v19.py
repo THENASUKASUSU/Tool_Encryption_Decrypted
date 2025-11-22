@@ -3496,7 +3496,9 @@ def interactive_encrypt():
         use_rsa = input(f"{BOLD}Gunakan RSA untuk mengamankan kunci AES? (y/N): {RESET}").strip().lower()
         if use_rsa in ['y', 'yes']:
             encryption_layers.append("rsa")
-            next_temp_file = create_temp_file(suffix=".layer2.tmp")
+            temp_fd, next_temp_file = tempfile.mkstemp(suffix=".layer2.tmp", dir=temp_dir)
+            os.close(temp_fd)
+            temp_files_created.add(next_temp_file)
             if apply_rsa_layer(current_file, next_temp_file, password, keyfile_path):
                 current_file = next_temp_file
             else:
@@ -3507,7 +3509,9 @@ def interactive_encrypt():
         use_curve = input(f"{BOLD}Gunakan lapisan Curve25519 untuk keamanan tambahan? (y/N): {RESET}").strip().lower()
         if use_curve in ['y', 'yes']:
             encryption_layers.append("curve25519")
-            next_temp_file = create_temp_file(suffix=".layer3.tmp")
+            temp_fd, next_temp_file = tempfile.mkstemp(suffix=".layer3.tmp", dir=temp_dir)
+            os.close(temp_fd)
+            temp_files_created.add(next_temp_file)
             if apply_curve25519_layer(current_file, next_temp_file, password, keyfile_path):
                 current_file = next_temp_file
             else:
@@ -3552,7 +3556,7 @@ def read_metadata(input_path: str) -> (list, int):
             metadata = json.loads(metadata_bytes.decode('utf-8'))
             header_size = 2 + metadata_len
             return metadata.get("layers", []), header_size
-    except (json.JSONDecodeError, FileNotFoundError, OSError) as e:
+    except (json.JSONDecodeError, FileNotFoundError, OSError, UnicodeDecodeError) as e:
         logger.warning(f"Could not read metadata from {input_path}: {e}")
         return [], 0
 
@@ -3629,7 +3633,7 @@ def interactive_decrypt():
             # The output of this step is the input for the next
             current_file = next_output_file
             if i < len(reversed_layers) - 1:
-                temp_files.add(current_file)
+                temp_files_created.add(current_file)
 
 
         print(f"{GREEN}✅ File berhasil didekripsi ke '{output_path}'{RESET}")
