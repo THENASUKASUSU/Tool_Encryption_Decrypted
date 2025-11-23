@@ -28,7 +28,6 @@ try:
     from cryptography.hazmat.primitives.kdf.hkdf import HKDF
     from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
     from cryptography.hazmat.primitives.kdf.scrypt import Scrypt
-    # from cryptography.hazmat.primitives.kdf.argon2 import Argon2 # Tidak digunakan secara langsung, gunakan argon2.low_level
     from cryptography.hazmat.primitives import hashes, serialization
     from cryptography.hazmat.primitives.asymmetric import rsa, padding, x25519
     from cryptography.fernet import Fernet
@@ -43,25 +42,22 @@ except ImportError as e:
     print(f"   Instal dengan: pip install cryptography")
 
 # --- Impor dari pycryptodome (sebagai fallback untuk AES-GCM jika cryptography gagal) ---
-# Perbaikan V14: Definisikan PYCRYPTODOME_AVAILABLE di awal SEBELUM digunakan
-PYCRYPTODOME_AVAILABLE = False # Inisialisasi awal SELALU di sini
+PYCRYPTODOME_AVAILABLE = False
 if not CRYPTOGRAPHY_AVAILABLE:
     try:
         from Crypto.Cipher import AES
-        from Crypto.Random import get_random_bytes # Gunakan get_random_bytes dari pycryptodome jika tersedia
-        PYCRYPTODOME_AVAILABLE = True # Set ke True jika impor berhasil
+        from Crypto.Random import get_random_bytes
+        PYCRYPTODOME_AVAILABLE = True
         print(f"{YELLOW}⚠️  Modul 'cryptography' tidak ditemukan. Menggunakan 'pycryptodome' sebagai fallback untuk AES-GCM.{RESET}")
     except ImportError:
-        PYCRYPTODOME_AVAILABLE = False # Pastikan tetap False jika impor gagal
         print(f"{RED}❌ Modul 'pycryptodome' juga tidak ditemukan.{RESET}")
         print(f"   Instal: pip install pycryptodome")
-        import sys # Impor sys di sini jika gagal
+        import sys
         sys.exit(1)
 
 # --- Impor dari argon2 (PasswordHasher untuk fallback jika cryptography Argon2 tidak tersedia) ---
-# Kita tetap impor low_level untuk menghindari error di fungsi derivasi
 try:
-    from argon2 import PasswordHasher
+    from argon2 import PasswordHasher, exceptions
     from argon2.low_level import hash_secret_raw, Type
     from argon2.exceptions import VerifyMismatchError
     ARGON2_AVAILABLE = True
@@ -69,6 +65,25 @@ try:
 except ImportError:
     ARGON2_AVAILABLE = False
     print(f"{RED}❌ Modul 'argon2' tidak ditemukan. Argon2 tidak tersedia.{RESET}")
+
+# --- Impor dari miscreant untuk AES-SIV ---
+try:
+    from miscreant.aes.siv import SIV
+    MISCREANT_AVAILABLE = True
+    print(f"{GREEN}✅ Modul 'miscreant' ditemukan. AES-SIV Tersedia.{RESET}")
+except ImportError:
+    MISCREANT_AVAILABLE = False
+    print(f"{RED}❌ Modul 'miscreant' tidak ditemukan. AES-SIV Dinonaktifkan.{RESET}")
+
+# --- Impor dari PyNaCl untuk XChaCha20-Poly1305 ---
+try:
+    import nacl.secret
+    import nacl.utils
+    PYNACL_AVAILABLE = True
+    print(f"{GREEN}✅ Modul 'pynacl' ditemukan. XChaCha20-Poly1305 Tersedia.{RESET}")
+except ImportError:
+    PYNACL_AVAILABLE = False
+    print(f"{RED}❌ Modul 'pynacl' tidak ditemukan. XChaCha20-Poly1305 Dinonaktifkan.{RESET}")
 
 # --- Impor lainnya ---
 from pathlib import Path
@@ -561,11 +576,12 @@ def load_config():
     """
     # Nilai default ditingkatkan untuk keamanan dan fungsionalitas V18
     default_config = {
-        "kdf_type": "argon2id", # Pilihan KDF: "argon2id", "scrypt", "pbkdf2" (menggunakan cryptography jika tersedia)
-        "encryption_algorithm": "hybrid-rsa-x25519", # Pilihan Algoritma: "hybrid-rsa-x25519", "aes-gcm"
-        "rsa_key_size": 4096, # Ukuran kunci RSA dalam bit
-        "argon2_time_cost": 25, # V17: Ditingkatkan
-        "argon2_memory_cost": 2**21, # V17: Ditingkatkan (2048MB)
+        "kdf_type": "argon2id",
+        "encryption_algorithm": "hybrid-rsa-x25519",  # Deprecated for new encryptions, use preferred_algorithm_priority
+        "preferred_algorithm_priority": ["xchacha20-poly1305", "aes-siv", "chacha20-poly1305", "aes-gcm"],
+        "rsa_key_size": 4096,
+        "argon2_time_cost": 25,
+        "argon2_memory_cost": 2**21,
         "argon2_parallelism": 4, # V17: Ditingkatkan
         "scrypt_n": 2**21, # V17: Ditingkatkan
         "scrypt_r": 8,
@@ -981,6 +997,182 @@ def deobfuscate_memory(data) -> bytes:
     """
     # Deobfuskasi adalah operasi yang sama dengan XOR
     return obfuscate_memory(data)
+
+class AlgorithmNegotiator:
+    """Selects the best available encryption algorithm."""
+
+    @staticmethod
+    def get_best_algorithm():
+        """
+        Selects the best available symmetric encryption algorithm based on a predefined priority list.
+
+        Returns:
+            A string identifier for the selected algorithm, or None if no supported algorithms are available.
+        """
+        priority = config.get("preferred_algorithm_priority", [])
+        for algo in priority:
+            if algo == "xchacha20-poly1305" and PYNACL_AVAILABLE:
+                return "xchacha20-poly1305"
+            if algo == "aes-siv" and MISCREANT_AVAILABLE:
+                return "aes-siv"
+            if algo == "chacha20-poly1305" and CRYPTOGRAPHY_AVAILABLE:
+                return "chacha20-poly1305"
+            if algo == "aes-gcm" and (CRYPTOGRAPHY_AVAILABLE or PYCRYPTODOME_AVAILABLE):
+                return "aes-gcm"
+        return None
+
+class HybridCipher:
+    """Manages hybrid encryption combining asymmetric and symmetric ciphers."""
+
+    def __init__(self, password, keyfile_path=None):
+        self.password = password
+        self.keyfile_path = keyfile_path
+        self.rsa_private_key, self.x25519_private_key = self._load_or_generate_keys()
+
+    def _load_or_generate_keys(self):
+        rsa_key, x25519_key = load_keys(self.password, self.keyfile_path)
+        if rsa_key is None or x25519_key is None:
+            print(f"{YELLOW}Kunci tidak ditemukan atau gagal dimuat. Membuat kunci baru...{RESET}")
+            rsa_key, x25519_key = generate_and_save_keys(self.password, self.keyfile_path)
+            if rsa_key is None:
+                raise RuntimeError("Gagal membuat atau memuat kunci hybrid.")
+            print(f"{GREEN}Kunci baru berhasil dibuat dan disimpan.{RESET}")
+        return rsa_key, x25519_key
+
+    def encrypt(self, input_path, output_path):
+        """Encrypts a file using a hybrid scheme."""
+        # 1. Generate session key and wrap it with X25519 and RSA
+        session_key = secrets.token_bytes(32)
+
+        # X25519 layer
+        x25519_public_key = self.x25519_private_key.public_key()
+        ephemeral_private_key = x25519.X25519PrivateKey.generate()
+        ephemeral_public_key = ephemeral_private_key.public_key()
+        shared_key = ephemeral_private_key.exchange(x25519_public_key)
+
+        hkdf = HKDF(
+            algorithm=hashes.SHA256(),
+            length=32,
+            salt=None,
+            info=b'hybrid_x25519_layer',
+        )
+        derived_key = hkdf.derive(shared_key)
+
+        # Encrypt session key with derived key
+        aesgcm = AESGCM(derived_key)
+        iv = secrets.token_bytes(12)
+        encrypted_session_key_inner = aesgcm.encrypt(iv, session_key, None)
+
+        # RSA layer
+        rsa_public_key = self.rsa_private_key.public_key()
+        encrypted_session_key_outer = rsa_public_key.encrypt(
+            encrypted_session_key_inner,
+            padding.OAEP(
+                mgf=padding.MGF1(algorithm=hashes.SHA256()),
+                algorithm=hashes.SHA256(),
+                label=None
+            )
+        )
+
+        # 2. Use the session key for symmetric encryption
+        algo = AlgorithmNegotiator.get_best_algorithm()
+        if algo is None:
+            raise RuntimeError("Tidak ada algoritma simetris yang tersedia.")
+
+        with open(input_path, 'rb') as f_in, open(output_path, 'wb') as f_out:
+            data = f_in.read()
+
+            if algo == "aes-gcm":
+                cipher = AESGCM(session_key)
+                nonce = secrets.token_bytes(config["gcm_nonce_len"])
+                ciphertext = cipher.encrypt(nonce, data, None)
+            elif algo == "chacha20-poly1305":
+                cipher = ChaCha20Poly1305(session_key)
+                nonce = secrets.token_bytes(12)
+                ciphertext = cipher.encrypt(nonce, data, None)
+            elif algo == "xchacha20-poly1305":
+                box = nacl.secret.SecretBox(session_key)
+                nonce = nacl.utils.random(nacl.secret.SecretBox.NONCE_SIZE)
+                ciphertext = box.encrypt(data, nonce)
+            elif algo == "aes-siv":
+                siv = SIV(session_key)
+                nonce = b'' # AES-SIV is deterministic
+                ciphertext = siv.seal(data, associated_data=[])
+
+            metadata = {
+                "cipher": "hybrid",
+                "symmetric_algo": algo,
+                "encrypted_session_key": base64.b64encode(encrypted_session_key_outer).decode('utf-8'),
+                "ephemeral_public_key": base64.b64encode(ephemeral_public_key.public_bytes(
+                    encoding=serialization.Encoding.Raw,
+                    format=serialization.PublicFormat.Raw
+                )).decode('utf-8'),
+                "iv": base64.b64encode(iv).decode('utf-8'),
+                "nonce": base64.b64encode(nonce).decode('utf-8')
+            }
+            metadata_bytes = json.dumps(metadata).encode('utf-8')
+            f_out.write(len(metadata_bytes).to_bytes(4, 'big'))
+            f_out.write(metadata_bytes)
+            f_out.write(ciphertext)
+
+        return True
+
+    def decrypt(self, input_path, output_path):
+        """Decrypts a file encrypted with the hybrid scheme."""
+        with open(input_path, 'rb') as f_in:
+            metadata_len = int.from_bytes(f_in.read(4), 'big')
+            metadata = json.loads(f_in.read(metadata_len).decode('utf-8'))
+
+            # Decrypt session key
+            encrypted_session_key_outer = base64.b64decode(metadata['encrypted_session_key'])
+            ephemeral_public_key_bytes = base64.b64decode(metadata['ephemeral_public_key'])
+            iv = base64.b64decode(metadata['iv'])
+
+            encrypted_session_key_inner = self.rsa_private_key.decrypt(
+                encrypted_session_key_outer,
+                padding.OAEP(
+                    mgf=padding.MGF1(algorithm=hashes.SHA256()),
+                    algorithm=hashes.SHA256(),
+                    label=None
+                )
+            )
+
+            ephemeral_public_key = x25519.X25519PublicKey.from_public_bytes(ephemeral_public_key_bytes)
+            shared_key = self.x25519_private_key.exchange(ephemeral_public_key)
+
+            hkdf = HKDF(
+                algorithm=hashes.SHA256(),
+                length=32,
+                salt=None,
+                info=b'hybrid_x25519_layer',
+            )
+            derived_key = hkdf.derive(shared_key)
+
+            aesgcm = AESGCM(derived_key)
+            session_key = aesgcm.decrypt(iv, encrypted_session_key_inner, None)
+
+            # Symmetric decryption
+            algo = metadata['symmetric_algo']
+            nonce = base64.b64decode(metadata['nonce'])
+            ciphertext = f_in.read()
+
+            if algo == "aes-gcm":
+                cipher = AESGCM(session_key)
+                plaintext = cipher.decrypt(nonce, ciphertext, None)
+            elif algo == "chacha20-poly1305":
+                cipher = ChaCha20Poly1305(session_key)
+                plaintext = cipher.decrypt(nonce, ciphertext, None)
+            elif algo == "xchacha20-poly1305":
+                box = nacl.secret.SecretBox(session_key)
+                plaintext = box.decrypt(ciphertext)
+            elif algo == "aes-siv":
+                siv = SIV(session_key)
+                plaintext = siv.open(ciphertext, associated_data=[])
+
+            with open(output_path, 'wb') as f_out:
+                f_out.write(plaintext)
+
+        return True
 
 # --- Fungsi Derivasi Kunci Baru (V14 - Parameter KDF Ditingkatkan) ---
 def derive_key_from_password_and_keyfile_pbkdf2(password: str, salt: bytes, keyfile_path: str = None) -> bytes:
@@ -1566,41 +1758,46 @@ def encrypt_file_simple(input_path: str, output_path: str, password: str, keyfil
             padding_added = padding_length
 
         # --- Pilih Algoritma Encrypted ---
-        algo = config.get("encryption_algorithm", "aes-gcm").lower()
+        algo = AlgorithmNegotiator.get_best_algorithm()
+        if algo is None:
+            print(f"{RED}❌ Error: Tidak ada algoritma enkripsi yang didukung tersedia.{RESET}")
+            logger.error("Tidak ada algoritma enkripsi yang didukung tersedia.")
+            return False, None
+
+        logger.info(f"Menggunakan algoritma: {algo}")
+
         if algo == "aes-gcm":
             if CRYPTOGRAPHY_AVAILABLE:
-                # Perbaikan: Gunakan nonce yang dihasilkan secara acak, bukan salt
                 nonce = secrets.token_bytes(config["gcm_nonce_len"])
                 cipher = AESGCM(key)
                 ciphertext = cipher.encrypt(nonce, data, associated_data=None)
-                tag = b"" # AESGCM (cryptography) menggabungkan tag
-            elif PYCRYPTODOME_AVAILABLE: # <-- Sekarang variabel ini selalu didefinisikan
-                nonce = get_random_bytes(config["gcm_nonce_len"]) # Gunakan get_random_bytes dari pycryptodome
+                tag = b""
+            elif PYCRYPTODOME_AVAILABLE:
+                nonce = get_random_bytes(config["gcm_nonce_len"])
                 cipher = AES.new(key, AES.MODE_GCM, nonce=nonce)
                 ciphertext, tag = cipher.encrypt_and_digest(data)
-            else:
-                print(f"{RED}❌ Error: Tidak ada pustaka tersedia untuk algoritma '{algo}'.{RESET}")
-                logger.error(f"Tidak ada pustaka tersedia untuk algoritma '{algo}'.")
-                return False, None
         elif algo == "chacha20-poly1305":
-            if CRYPTOGRAPHY_AVAILABLE:
-                nonce = secrets.token_bytes(12)  # ChaCha20Poly1305 uses a 12-byte nonce
-                cipher = ChaCha20Poly1305(key)
-                ciphertext = cipher.encrypt(nonce, data, associated_data=None)
-                tag = b""  # ChaCha20Poly1305 (cryptography) includes the tag
-            else:
-                print(f"{RED}❌ Error: Algoritma '{algo}' memerlukan modul 'cryptography'.{RESET}")
-                logger.error(f"Algoritma '{algo}' tidak tersedia tanpa 'cryptography'.")
-                return False, None
-        else:
-            print(f"{RED}❌ Error: Algoritma encrypted '{algo}' tidak dikenal atau tidak didukung di versi ini.{RESET}")
-            logger.error(f"Algoritma encrypted '{algo}' tidak dikenal atau tidak didukung di versi ini.")
-            return False, None
+            nonce = secrets.token_bytes(12)
+            cipher = ChaCha20Poly1305(key)
+            ciphertext = cipher.encrypt(nonce, data, associated_data=None)
+            tag = b""
+        elif algo == "xchacha20-poly1305":
+            box = nacl.secret.SecretBox(key)
+            nonce = nacl.utils.random(nacl.secret.SecretBox.NONCE_SIZE)
+            ciphertext = box.encrypt(data, nonce)
+            tag = b""
+        elif algo == "aes-siv":
+            siv = SIV(key)
+            # AES-SIV tidak memerlukan nonce; ia deterministik
+            ciphertext = siv.seal(data, associated_data=[])
+            nonce = b"" # Tidak ada nonce untuk AES-SIV
+            tag = b""
 
         # AEAD ciphers like AES-GCM and ChaCha20-Poly1305 provide authentication, so a separate HMAC is not needed.
 
         # --- V10/V11/V12/V13/V14: Custom File Format Shuffle & Dynamic Header (Variable Parts) ---
         parts_to_write = [
+            ("algo_name", algo.encode('utf-8')),
             ("nonce", nonce),
             ("checksum", original_checksum),
             ("padding_added", padding_added.to_bytes(config["padding_size_length"], byteorder='big')),
@@ -1884,13 +2081,21 @@ def decrypt_file_simple(input_path: str, output_path: str, password: str, keyfil
 
 
         # Ambil bagian-bagian yang diperlukan
+        algo_name_bytes = parts_read.get("algo_name")
+        if algo_name_bytes:
+            algo = algo_name_bytes.decode('utf-8')
+        else:
+            # Fallback for old file format
+            algo = config.get("encryption_algorithm", "aes-gcm").lower()
+            logger.warning(f"File format lama terdeteksi. Menggunakan algoritma dari konfigurasi: {algo}")
+
         nonce = parts_read.get("nonce")
         stored_checksum = parts_read.get("checksum")
         padding_size_bytes = parts_read.get("padding_added")
         tag = parts_read.get("tag") # Bisa None jika cryptography
         ciphertext = parts_read.get("ciphertext")
 
-        if not all([nonce, stored_checksum, padding_size_bytes, ciphertext]):
+        if not all([nonce is not None, stored_checksum, padding_size_bytes, ciphertext]):
              print(f"{RED}❌ Error: File input tidak valid atau rusak (bagian penting hilang).{RESET}")
              logger.error(f"File input '{input_path}' rusak atau tidak lengkap.")
              return False, None
@@ -1910,43 +2115,32 @@ def decrypt_file_simple(input_path: str, output_path: str, password: str, keyfil
         # AEAD ciphers like AES-GCM and ChaCha20-Poly1305 provide authentication, so a separate HMAC is not needed.
 
         # --- Decryption berdasarkan algoritma ---
-        algo = config.get("encryption_algorithm", "aes-gcm").lower()
-        if algo == "aes-gcm":
-            if PYCRYPTODOME_AVAILABLE: # <-- Sekarang variabel ini selalu didefinisikan
-                # Perbaikan: Gunakan nonce yang dibaca dari file
-                cipher = AES.new(key, AES.MODE_GCM, nonce=nonce)
-                try:
+        try:
+            if algo == "aes-gcm":
+                if PYCRYPTODOME_AVAILABLE:
+                    cipher = AES.new(key, AES.MODE_GCM, nonce=nonce)
                     plaintext_data = cipher.decrypt_and_verify(ciphertext, tag)
-                except ValueError:
-                    print(f"{RED}❌ Error: Decryption gagal. Password atau Keyfile mungkin salah, atau file rusak (otentikasi AES-GCM gagal).{RESET}")
-                    logger.error(f"Decryption gagal (otentikasi AES-GCM pycryptodome) untuk {input_path}") # Perbaikan: gunakan input_path
-                    return False, None
-            elif CRYPTOGRAPHY_AVAILABLE:
-                # Perbaikan: Gunakan nonce yang dibaca dari file
-                cipher = AESGCM(key)
-                try:
-                    plaintext_data = cipher.decrypt(nonce, ciphertext, associated_data=None) # Gunakan nonce yang dibaca
-                except Exception as e:
-                    print(f"{RED}❌ Error: Decryption gagal. Password atau Keyfile mungkin salah, atau file rusak (otentikasi AES-GCM cryptography gagal).{RESET}")
-                    logger.error(f"Decryption gagal (otentikasi AES-GCM cryptography) untuk {input_path}: {e}") # Perbaikan: gunakan input_path
-                    return False, None
-            else:
-                print(f"{RED}❌ Error: Tidak ada pustaka tersedia untuk decryption AES-GCM.{RESET}")
-                logger.error(f"Tidak ada pustaka tersedia untuk decryption AES-GCM.")
-                return False, None
-        elif algo == "chacha20-poly1305":
-            if CRYPTOGRAPHY_AVAILABLE:
-                cipher = ChaCha20Poly1305(key)
-                try:
+                elif CRYPTOGRAPHY_AVAILABLE:
+                    cipher = AESGCM(key)
                     plaintext_data = cipher.decrypt(nonce, ciphertext, associated_data=None)
-                except Exception as e:
-                    print(f"{RED}❌ Error: Decryption gagal. Kunci mungkin salah atau file rusak (otentikasi ChaCha20-Poly1305 gagal).{RESET}")
-                    logger.error(f"Decryption gagal (otentikasi ChaCha20-Poly1305) untuk {input_path}: {e}")
-                    return False, None
+                else:
+                    raise RuntimeError("Tidak ada pustaka tersedia untuk dekripsi AES-GCM.")
+            elif algo == "chacha20-poly1305":
+                cipher = ChaCha20Poly1305(key)
+                plaintext_data = cipher.decrypt(nonce, ciphertext, associated_data=None)
+            elif algo == "xchacha20-poly1305":
+                box = nacl.secret.SecretBox(key)
+                plaintext_data = box.decrypt(ciphertext)
+            elif algo == "aes-siv":
+                siv = SIV(key)
+                plaintext_data = siv.open(ciphertext, associated_data=[])
             else:
-                print(f"{RED}❌ Error: Algoritma '{algo}' memerlukan modul 'cryptography'.{RESET}")
-                logger.error(f"Algoritma '{algo}' tidak tersedia tanpa 'cryptography'.")
-                return False, None
+                raise ValueError(f"Algoritma tidak dikenal: {algo}")
+        except Exception as e:
+            print(f"{RED}❌ Error: Dekripsi gagal. Kunci mungkin salah atau file rusak.{RESET}")
+            logger.error(f"Dekripsi gagal untuk algoritma {algo}: {e}")
+            return False, None
+
         if padding_added > 0:
             if len(plaintext_data) < padding_added:
                 print(f"{RED}❌ Error: File input rusak (padding yang disimpan lebih besar dari data hasil decryption).{RESET}")
@@ -2798,128 +2992,24 @@ def decrypt_file_with_master_key(input_path: str, output_path: str, master_key: 
 
 
 def encrypt_file_hybrid(input_path: str, output_path: str, password: str, keyfile_path: str = None, hide_paths: bool = False):
-    """
-    Encrypts a file using a hybrid approach with RSA and X25519 layers.
-    This is a non-interactive version.
-    Order: content -> RSA layer -> Curve25519 layer -> final file with metadata
-    """
-    if not CRYPTOGRAPHY_AVAILABLE:
-        print_error_box("Hybrid encryption requires the 'cryptography' module.")
-        return False
-
-    logger.info(f"Starting hybrid encryption for {input_path}")
-    temp_dir = config.get("temp_dir", "./temp_thena")
-    os.makedirs(temp_dir, exist_ok=True)
-
-    intermediate_files = []
-    current_file = input_path
-
+    """Encrypts a file using the HybridCipher class."""
     try:
-        # Layer 1: RSA
-        temp_fd_rsa, temp_path_rsa = tempfile.mkstemp(suffix=".rsa.tmp", dir=temp_dir)
-        os.close(temp_fd_rsa)
-        intermediate_files.append(temp_path_rsa)
-
-        if not apply_rsa_layer(current_file, temp_path_rsa, password, keyfile_path):
-            print_error_box("Failed to apply RSA layer.")
-            return False
-        current_file = temp_path_rsa
-
-        # Layer 2: Curve25519
-        temp_fd_curve, temp_path_curve = tempfile.mkstemp(suffix=".curve.tmp", dir=temp_dir)
-        os.close(temp_fd_curve)
-        intermediate_files.append(temp_path_curve)
-
-        if not apply_curve25519_layer(current_file, temp_path_curve, password, keyfile_path):
-            print_error_box("Failed to apply Curve25519 layer.")
-            return False
-        current_file = temp_path_curve
-
-        # Finalizing: Add metadata and write to output
-        encryption_layers = ["rsa", "curve25519"]
-        metadata = {"layers": encryption_layers}
-        metadata_bytes = json.dumps(metadata).encode('utf-8')
-        metadata_len = len(metadata_bytes).to_bytes(2, 'big')
-
-        with open(output_path, "wb") as f_out:
-            f_out.write(metadata_len)
-            f_out.write(metadata_bytes)
-            with open(current_file, "rb") as f_in:
-                f_out.write(f_in.read())
-
-        logger.info(f"Hybrid encryption successful for {input_path} to {output_path}")
-        return True
-
+        cipher = HybridCipher(password, keyfile_path)
+        return cipher.encrypt(input_path, output_path)
     except Exception as e:
-        print_error_box(f"An error occurred during hybrid encryption: {e}")
-        logger.error(f"Error during hybrid encryption: {e}", exc_info=True)
+        print_error_box(f"Gagal melakukan enkripsi hybrid: {e}")
+        logger.error(f"Gagal melakukan enkripsi hybrid: {e}", exc_info=True)
         return False
-    finally:
-        for f in intermediate_files:
-            if os.path.exists(f):
-                os.remove(f)
 
 def decrypt_file_hybrid(input_path: str, output_path: str, password: str, keyfile_path: str = None, hide_paths: bool = False):
-    if not CRYPTOGRAPHY_AVAILABLE:
-        print_error_box("Hybrid decryption requires the 'cryptography' module.")
-        return False
-
-    logger.info(f"Starting hybrid decryption for {input_path}")
-    temp_dir = config.get("temp_dir", "./temp_thena")
-    os.makedirs(temp_dir, exist_ok=True)
-
-    intermediate_files = []
-
+    """Decrypts a file using the HybridCipher class."""
     try:
-        encryption_layers, header_size = read_metadata(input_path)
-        if not encryption_layers:
-            print_error_box("Could not read encryption layers from file.")
-            return False
-
-        temp_fd_content, temp_path_content = tempfile.mkstemp(suffix=".content.tmp", dir=temp_dir)
-        os.close(temp_fd_content)
-        intermediate_files.append(temp_path_content)
-
-        with open(input_path, "rb") as f_in, open(temp_path_content, "wb") as f_out:
-            f_in.seek(header_size)
-            f_out.write(f_in.read())
-
-        current_file = temp_path_content
-
-        reversed_layers = encryption_layers[::-1]
-
-        for i, layer in enumerate(reversed_layers):
-            is_last_layer = (i == len(reversed_layers) - 1)
-            next_output_file = output_path if is_last_layer else None
-            if not is_last_layer:
-                temp_fd, temp_path = tempfile.mkstemp(suffix=f".dec_layer_{i}.tmp", dir=temp_dir)
-                os.close(temp_fd)
-                intermediate_files.append(temp_path)
-                next_output_file = temp_path
-
-            success = False
-            if layer == "curve25519":
-                success = remove_curve25519_layer(current_file, next_output_file, password, keyfile_path)
-            elif layer == "rsa":
-                success = remove_rsa_layer(current_file, next_output_file, password, keyfile_path)
-
-            if not success:
-                print_error_box(f"Failed to decrypt layer '{layer}'.")
-                return False
-
-            current_file = next_output_file
-
-        logger.info(f"Hybrid decryption successful for {input_path} to {output_path}")
-        return True
-
+        cipher = HybridCipher(password, keyfile_path)
+        return cipher.decrypt(input_path, output_path)
     except Exception as e:
-        print_error_box(f"An error occurred during hybrid decryption: {e}")
-        logger.error(f"Error during hybrid decryption: {e}", exc_info=True)
+        print_error_box(f"Gagal melakukan dekripsi hybrid: {e}")
+        logger.error(f"Gagal melakukan dekripsi hybrid: {e}", exc_info=True)
         return False
-    finally:
-        for f in intermediate_files:
-            if os.path.exists(f):
-                os.remove(f)
 
 # --- Fungsi UI ---
 def print_box(title, options=None, width=80):
@@ -3035,10 +3125,34 @@ def interactive_encrypt():
         if not validate_password_keyfile(password, keyfile_path, interactive=True):
             return
 
-        # --- Base Encryption Layer ---
-        # Defaulting to AES-GCM as the base algorithm to simplify the workflow.
-        base_algorithm = "aes-gcm"
+        # --- Algorithm Selection ---
+        print("\nPilih algoritma enkripsi:")
+        print("1. Otomatis (rekomendasi)")
+        print("2. AES-GCM")
+        print("3. ChaCha20-Poly1305")
+        print("4. XChaCha20-Poly1305")
+        print("5. AES-SIV")
 
+        algo_choice = input(f"{BOLD}Pilihan: {RESET}").strip()
+
+        if algo_choice == '1':
+            base_algorithm = AlgorithmNegotiator.get_best_algorithm()
+            if base_algorithm is None:
+                print_error_box("Tidak ada algoritma yang didukung tersedia.")
+                return
+        elif algo_choice == '2':
+            base_algorithm = "aes-gcm"
+        elif algo_choice == '3':
+            base_algorithm = "chacha20-poly1305"
+        elif algo_choice == '4':
+            base_algorithm = "xchacha20-poly1305"
+        elif algo_choice == '5':
+            base_algorithm = "aes-siv"
+        else:
+            print_error_box("Pilihan tidak valid.")
+            return
+
+        print(f"{CYAN}Menggunakan algoritma: {base_algorithm}{RESET}")
         encryption_layers = [base_algorithm]
 
         current_file = input_path
@@ -3195,7 +3309,7 @@ def interactive_decrypt():
                 success = remove_curve25519_layer(current_file, next_output_file, password, keyfile_path)
             elif layer == "rsa":
                 success = remove_rsa_layer(current_file, next_output_file, password, keyfile_path)
-            elif layer in ["aes-gcm", "chacha20-poly1305"]:
+            elif layer in ["aes-gcm", "chacha20-poly1305", "xchacha20-poly1305", "aes-siv"]:
                 # Temporarily set the config for decrypt_file_simple
                 original_algorithm = config["encryption_algorithm"]
                 config["encryption_algorithm"] = layer
@@ -3388,6 +3502,7 @@ def main():
     parser.add_argument('--enable-compression', action='store_true', help='Aktifkan kompresi zlib sebelum encrypted (menggunakan konfigurasi)')
     parser.add_argument('--disable-compression', action='store_true', help='Nonaktifkan kompresi zlib sebelum encrypted')
     parser.add_argument('--config', type=str, help='Path to the configuration file')
+    parser.add_argument('--algo', type=str, help='Algoritma enkripsi yang akan digunakan (misalnya, aes-gcm, chacha20-poly1305)')
 
     args = parser.parse_args()
 
@@ -3414,6 +3529,14 @@ def main():
     if args.disable_compression:
         config["enable_compression"] = False
         logger.info("Kompresi dinonaktifkan via argumen baris perintah.")
+
+    if args.algo:
+        if args.algo in ["aes-gcm", "chacha20-poly1305", "xchacha20-poly1305", "aes-siv"]:
+            config["preferred_algorithm_priority"] = [args.algo] + [a for a in config["preferred_algorithm_priority"] if a != args.algo]
+            logger.info(f"Algoritma diutamakan via argumen baris perintah: {args.algo}")
+        else:
+            print_error_box(f"Error: Algoritma '{args.algo}' tidak valid.")
+            sys.exit(1)
 
     if args.batch:
         if not args.dir or not args.password:

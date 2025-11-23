@@ -1,1 +1,17 @@
+# Python
+__pycache__/
+*.pyc
+
+# Private Keys
+*.pem
+
+# Test Artifacts
+*.encrypted
+test_*.txt
+decrypted_*.txt
 *.log
+*.json
+
+# Temporary Files
+temp_thena/
+.DS_Store

@@ -1,6 +1,12 @@
 {
     "kdf_type": "argon2id",
     "encryption_algorithm": "hybrid-rsa-x25519",
+    "preferred_algorithm_priority": [
+        "xchacha20-poly1305",
+        "aes-siv",
+        "chacha20-poly1305",
+        "aes-gcm"
+    ],
     "rsa_key_size": 4096,
     "argon2_time_cost": 25,
     "argon2_memory_cost": 2097152,

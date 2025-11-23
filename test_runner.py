@@ -91,6 +91,7 @@ class TestThenaScript(unittest.TestCase):
             "test_file.txt",
             "AStrongPassword123!",
             "n",  # Use Keyfile? (y/N)
+            "1",  # Algorithm choice
             "n",  # Use RSA? (y/N)
             "n",  # Use Curve25519? (y/N)
             "n",  # Delete original file? (y/N)
@@ -124,6 +125,7 @@ class TestThenaScript(unittest.TestCase):
             "test_file.txt",
             "AStrongPassword123!",
             "n",
+            "1", # Algorithm selection
             "y",
             "y",
             "n",
@@ -131,6 +133,37 @@ class TestThenaScript(unittest.TestCase):
             "3"
         ]
         run_thena_script(encrypt_inputs, config_file=config_encrypt)
+
+        encrypted_file = None
+        for file in glob.glob("*.encrypted"):
+            encrypted_file = file
+            break
+
+        self.assertIsNotNone(encrypted_file, "Encrypted file not found.")
+
+        # Disable temp files for decryption
+        config_decrypt = "thena_config_decrypt.json"
+        self.configs["decrypt"] = config_decrypt
+        with open(config_decrypt, "w") as f:
+            json.dump({"enable_temp_files": False}, f)
+
+        # Decrypt
+        decrypt_inputs = [
+            "2",
+            encrypted_file,
+            "decrypted_file.txt",
+            "AStrongPassword123!",
+            "n", # No keyfile
+            "n", # Don't delete encrypted
+            "3"  # Exit
+        ]
+        stdout, stderr, _, _ = run_thena_script(decrypt_inputs, config_file=config_decrypt)
+
+        self.assertNotIn("TypeError", stderr)
+        self.assertTrue(os.path.exists("decrypted_file.txt"), "Decrypted file was not created.")
+        with open("decrypted_file.txt", "r") as f:
+            content = f.read()
+        self.assertEqual(content, "This is a test for layered decryption.")
 
         encrypted_file = None
         for file in glob.glob("*.encrypted"):
@@ -161,6 +194,130 @@ class TestThenaScript(unittest.TestCase):
         with open("test_file.txt", "w") as f:
             f.write("This is a test file for layered decryption.")
 
+    def test_xchacha20_poly1305_encryption_decryption(self):
+        """Tests the full encryption-decryption cycle with XChaCha20-Poly1305."""
+        config_file = "thena_config_xchacha20.json"
+        self.configs["xchacha20"] = config_file
+        with open(config_file, "w") as f:
+            json.dump({"preferred_algorithm_priority": ["xchacha20-poly1305", "aes-gcm"]}, f)
+
+        with open("test_file.txt", "w") as f:
+            f.write("This is a test for XChaCha20-Poly1305.")
+
+        # Encrypt
+        encrypt_inputs = [
+            "1",
+            "test_file.txt",
+            "AStrongPassword123!",
+            "n", # No keyfile
+            "1", # Auto algorithm selection
+            "n", # No RSA
+            "n", # No Curve25519
+            "n", # Don't delete original
+            "3"  # Exit
+        ]
+        _, _, _, encrypted_file = run_thena_script(encrypt_inputs, get_output_filename=True, config_file=config_file)
+        self.assertIsNotNone(encrypted_file, "Failed to get encrypted filename.")
+
+        # Decrypt
+        decrypt_inputs = [
+            "2",
+            encrypted_file,
+            "decrypted_file.txt",
+            "AStrongPassword123!",
+            "n", # No keyfile
+            "n", # Don't delete encrypted
+            "3"  # Exit
+        ]
+        run_thena_script(decrypt_inputs, config_file=config_file)
+
+        self.assertTrue(os.path.exists("decrypted_file.txt"), "Decrypted file not found.")
+        with open("decrypted_file.txt", "r") as f:
+            content = f.read()
+        self.assertEqual(content, "This is a test for XChaCha20-Poly1305.")
+
+    def test_aes_siv_encryption_decryption(self):
+        """Tests the full encryption-decryption cycle with AES-SIV."""
+        config_file = "thena_config_aes_siv.json"
+        self.configs["aes_siv"] = config_file
+        with open(config_file, "w") as f:
+            json.dump({"preferred_algorithm_priority": ["aes-siv", "aes-gcm"]}, f)
+
+        with open("test_file.txt", "w") as f:
+            f.write("This is a test for AES-SIV.")
+
+        # Encrypt
+        encrypt_inputs = [
+            "1",
+            "test_file.txt",
+            "AStrongPassword123!",
+            "n", # No keyfile
+            "5", # AES-SIV algorithm selection
+            "n", # No RSA
+            "n", # No Curve2_5519
+            "n", # Don't delete original
+            "3"  # Exit
+        ]
+        _, _, _, encrypted_file = run_thena_script(encrypt_inputs, get_output_filename=True, config_file=config_file)
+        self.assertIsNotNone(encrypted_file, "Failed to get encrypted filename.")
+
+        # Decrypt
+        decrypt_inputs = [
+            "2",
+            encrypted_file,
+            "decrypted_file.txt",
+            "AStrongPassword123!",
+            "n", # No keyfile
+            "n", # Don't delete encrypted
+            "3"  # Exit
+        ]
+        run_thena_script(decrypt_inputs, config_file=config_file)
+
+        self.assertTrue(os.path.exists("decrypted_file.txt"), "Decrypted file not found.")
+        with open("decrypted_file.txt", "r") as f:
+            content = f.read()
+        self.assertEqual(content, "This is a test for AES-SIV.")
+
+    def test_hybrid_cipher_encryption_decryption(self):
+        """Tests the full encryption-decryption cycle of the HybridCipher class."""
+        config_file = "thena_config_hybrid.json"
+        self.configs["hybrid"] = config_file
+        with open(config_file, "w") as f:
+            # Prioritize a modern cipher to ensure the negotiator is working
+            json.dump({"preferred_algorithm_priority": ["xchacha20-poly1305", "aes-gcm"], "encryption_algorithm": "hybrid-rsa-x25519"}, f)
+
+        with open("test_file.txt", "w") as f:
+            f.write("This is a test for the HybridCipher class.")
+
+        # Encrypt using the command-line interface for hybrid mode
+        command = [
+            "python3", "Thena_dev_v19.py",
+            "--encrypt",
+            "-i", "test_file.txt",
+            "-o", "hybrid_encrypted.encrypted",
+            "-p", "AStrongPassword123!",
+            "--config", config_file
+        ]
+        process = subprocess.run(command, text=True, capture_output=True)
+        self.assertEqual(process.returncode, 0, f"Hybrid encryption failed: {process.stderr}")
+
+        # Decrypt
+        command = [
+            "python3", "Thena_dev_v19.py",
+            "--decrypt",
+            "-i", "hybrid_encrypted.encrypted",
+            "-o", "decrypted_file.txt",
+            "-p", "AStrongPassword123!",
+            "--config", config_file
+        ]
+        process = subprocess.run(command, text=True, capture_output=True)
+        self.assertEqual(process.returncode, 0, f"Hybrid decryption failed: {process.stderr}")
+
+        self.assertTrue(os.path.exists("decrypted_file.txt"), "Decrypted file not found.")
+        with open("decrypted_file.txt", "r") as f:
+            content = f.read()
+        self.assertEqual(content, "This is a test for the HybridCipher class.")
+
         # Encrypt with AES + RSA layers, enabling temp files for encryption
         config_encrypt = "thena_config_encrypt.json"
         self.configs["encrypt"] = config_encrypt
@@ -172,6 +329,7 @@ class TestThenaScript(unittest.TestCase):
             "test_file.txt",
             "AStrongPassword123!",
             "n",
+            "1", # Algorithm selection
             "y",
             "y",
             "n",
