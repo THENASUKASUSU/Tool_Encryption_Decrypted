@@ -32,7 +32,11 @@ try:
     from cryptography.hazmat.primitives import hashes, serialization
     from cryptography.hazmat.primitives.asymmetric import rsa, padding, x25519
     from cryptography.fernet import Fernet
-    from cryptography.hazmat.primitives.ciphers.aead import AESGCM, ChaCha20Poly1305
+    from cryptography.hazmat.primitives.ciphers.aead import (
+        AESGCM,
+        ChaCha20Poly1305,
+        AESSIV,
+    )
     from cryptography import exceptions
     CRYPTOGRAPHY_AVAILABLE = True
     print(f"{GREEN}✅ Modul 'cryptography' ditemukan. Fitur Lanjutan Tersedia.{RESET}")
@@ -75,6 +79,38 @@ from pathlib import Path
 import json
 import os
 import sys # Impor sys di awal
+
+
+class AlgorithmNegotiator:
+    """Selects the best available encryption algorithm."""
+
+    def __init__(self, config, cryptography_available):
+        self.config = config
+        self.cryptography_available = cryptography_available
+        self.supported_algorithms = {
+            "aes-gcm": self._check_aes_gcm,
+            "chacha20-poly1305": self._check_chacha20,
+            "aes-siv": self._check_aes_siv,
+        }
+
+    def _check_aes_gcm(self):
+        return self.cryptography_available or PYCRYPTODOME_AVAILABLE
+
+    def _check_chacha20(self):
+        return self.cryptography_available
+
+    def _check_aes_siv(self):
+        return self.cryptography_available
+
+    def get_best_algorithm(self):
+        """Returns the best available algorithm based on the priority list."""
+        priority_list = self.config.get("preferred_algorithm_priority", [])
+        for algo in priority_list:
+            if algo in self.supported_algorithms and self.supported_algorithms[algo]():
+                logger.info(f"Algoritma yang dipilih: {algo}")
+                return algo
+        logger.warning("Tidak ada algoritma pilihan yang tersedia, menggunakan fallback ke aes-gcm.")
+        return "aes-gcm"  # Fallback
 import secrets
 import time
 import logging
@@ -94,6 +130,130 @@ import ctypes.util # Impor ctypes.util untuk secure memory (V10/V11/V12/V13/V14)
 import signal # Impor signal untuk anti-debug (V10/V11/V12/V13/V14)
 import mmap # Impor mmap untuk performa/file besar (V12/V13/V14)
 import struct # Impor struct untuk header dinamis (V12/V13/V14)
+
+# --- KeyManager Class ---
+class KeyManager:
+    """Manages loading, versioning, and rotation of master keys."""
+
+    def __init__(self, key_file_path, password, keyfile_path=None):
+        self.key_file_path = key_file_path
+        self.password = password
+        self.keyfile_path = keyfile_path
+        self.keys = {}
+        self.latest_version = 0
+        self._load_keys()
+
+    def _load_keys(self):
+        """Loads all key versions from the master key file."""
+        if not os.path.exists(self.key_file_path):
+            print(f"{YELLOW}File master key tidak ditemukan, akan dibuat saat rotasi...{RESET}")
+            return
+
+        try:
+            with open(self.key_file_path, 'rb') as f:
+                data = f.read()
+
+            salt = data[:config["master_key_salt_len"]]
+            encrypted_data = data[config["master_key_salt_len"]:]
+
+            fernet_key_bytes = derive_key_from_password_and_keyfile(self.password, salt, self.keyfile_path)
+            if fernet_key_bytes is None:
+                raise ValueError("Gagal menurunkan kunci untuk dekripsi file master key.")
+
+            fernet_key = base64.urlsafe_b64encode(fernet_key_bytes[:32])
+            fernet = Fernet(fernet_key)
+
+            decrypted_data = fernet.decrypt(encrypted_data)
+            key_data = json.loads(decrypted_data.decode('utf-8'))
+
+            self.keys = {int(v): base64.b64decode(k) for v, k in key_data["keys"].items()}
+            self.latest_version = key_data["latest_version"]
+            print(f"{GREEN}✅ Berhasil memuat {len(self.keys)} versi master key.{RESET}")
+
+        except (FileNotFoundError, ValueError, json.JSONDecodeError, exceptions.InvalidToken) as e:
+            print(f"{RED}❌ Gagal memuat atau mendekripsi file master key: {e}{RESET}")
+            # This might happen if the password is wrong or the file is corrupt.
+            # We'll proceed with an empty key set, and a new key will be created on rotation.
+            self.keys = {}
+            self.latest_version = 0
+
+    def _save_keys(self):
+        """Encrypts and saves all key versions to the master key file."""
+        if not self.keys:
+            print(f"{YELLOW}Tidak ada kunci untuk disimpan.{RESET}")
+            return
+
+        key_data = {
+            "latest_version": self.latest_version,
+            "keys": {str(v): base64.b64encode(k).decode('utf-8') for v, k in self.keys.items()}
+        }
+
+        salt = secrets.token_bytes(config["master_key_salt_len"])
+        fernet_key_bytes = derive_key_from_password_and_keyfile(self.password, salt, self.keyfile_path)
+        if fernet_key_bytes is None:
+            raise ValueError("Gagal menurunkan kunci untuk enkripsi file master key.")
+
+        fernet_key = base64.urlsafe_b64encode(fernet_key_bytes[:32])
+        fernet = Fernet(fernet_key)
+
+        encrypted_data = fernet.encrypt(json.dumps(key_data).encode('utf-8'))
+
+        with open(self.key_file_path, 'wb') as f:
+            f.write(salt)
+            f.write(encrypted_data)
+        print(f"{GREEN}✅ Master key berhasil disimpan ke '{self.key_file_path}'.{RESET}")
+
+    def get_key(self, version=None):
+        """Retrieves a master key for a specific version, or the latest if no version is provided."""
+        if version is None:
+            version = self.latest_version
+
+        key = self.keys.get(version)
+        if key is None:
+            print(f"{RED}❌ Master key versi {version} tidak ditemukan.{RESET}")
+        return key
+
+    def rotate_key(self):
+        """Generates a new master key, making it the latest version."""
+        new_version = self.latest_version + 1
+        new_key = secrets.token_bytes(config["file_key_length"])
+
+        self.keys[new_version] = new_key
+        self.latest_version = new_version
+
+        print(f"{GREEN}✅ Master key baru (versi {new_version}) berhasil dibuat.{RESET}")
+        self._save_keys()
+        return new_key
+
+    def get_latest_key(self):
+        """Returns the latest master key, creating one if none exist."""
+        if not self.keys:
+            print(f"{YELLOW}Belum ada master key. Membuat versi pertama...{RESET}")
+            return self.rotate_key()
+        return self.get_key(self.latest_version)
+
+# --- Future KMS and Automatic Rotation Planning ---
+# To support external KMS, we could create a KMSProvider interface:
+# class KMSProvider:
+#     def get_key(self, key_id):
+#         raise NotImplementedError
+#     def rotate_key(self, key_id):
+#         raise NotImplementedError
+#
+# Then, KeyManager could be refactored to use a provider based on config.
+#
+# For automatic rotation, a KeyRotationScheduler class could be implemented:
+# class KeyRotationScheduler:
+#     def __init__(self, key_manager, interval_days):
+#         self.key_manager = key_manager
+#         self.interval = timedelta(days=interval_days)
+#         self.last_rotation_time = datetime.now()
+#
+#     def check_and_rotate(self):
+#         if datetime.now() - self.last_rotation_time > self.interval:
+#             self.key_manager.rotate_key()
+#             self.last_rotation_time = datetime.now()
+#             print("Master key has been automatically rotated.")
 
 # --- Nama File Konfigurasi dan Log ---
 CONFIG_FILE = "thena_config_v18.json"
@@ -1201,6 +1361,24 @@ def derive_file_key_from_master_key(master_key: bytes, input_file_path: str) -> 
         return secrets.token_bytes(config["file_key_length"])
 
 # --- Fungsi Derivasi Kunci HMAC dari Master Key (V8 - Fixed HMAC Derivation - V14: Konsisten & Lebih Aman) ---
+def derive_session_key_from_file_key(file_key: bytes, salt: bytes) -> bytes:
+    """Derives a session key from the file key using HKDF."""
+    if not CRYPTOGRAPHY_AVAILABLE:
+        print(f"{RED}❌ Error: HKDF (untuk session key) memerlukan modul 'cryptography'.{RESET}")
+        return secrets.token_bytes(config["file_key_length"])
+
+    try:
+        hkdf = HKDF(
+            algorithm=hashes.SHA256(),
+            length=config["file_key_length"],
+            salt=salt,
+            info=b'thena_session_key',
+        )
+        return hkdf.derive(file_key)
+    except Exception as e:
+        logger.error(f"Kesalahan saat derivasi session key: {e}")
+        return secrets.token_bytes(config["file_key_length"])
+
 def derive_hmac_key_from_master_key(master_key: bytes, input_file_path: str) -> bytes:
     """Derives an HMAC key from the master key using HKDF.
 
@@ -1240,125 +1418,43 @@ def derive_hmac_key_from_master_key(master_key: bytes, input_file_path: str) -> 
 
 # --- Fungsi Master Key Management ---
 def load_or_create_master_key(password: str, keyfile_path: str, hide_paths: bool = False):
-    """Loads a master key from a file or creates a new one.
-
-    If the master key file exists, this function attempts to decrypt it
-    using the provided password and keyfile. If the file does not exist,
-    a new master key is generated and saved to the file.
-
-    Args:
-        password: The password to use for decrypting or creating the master
-            key.
-        keyfile_path: The path to the keyfile to use for decrypting or
-            creating the master key.
-        hide_paths (bool): Whether to hide the file paths in the output.
-
-    Returns:
-        The loaded or created master key, or None if an error occurs.
-    """
-    master_key = None
-    if os.path.exists(config["master_key_file"]):
-        if hide_paths:
-            print(f"{CYAN}Memuat Master Key...{RESET}")
-        else:
-            print(f"{CYAN}Memuat Master Key dari '{config['master_key_file']}'...{RESET}")
-        try:
-            with open(config["master_key_file"], 'rb') as f:
-                salt = f.read(config["master_key_salt_len"])
-                if len(salt) != config["master_key_salt_len"]:
-                    print(f"{RED}❌ Error: File Master Key rusak (salt tidak valid).{RESET}")
-                    logger.error("File Master Key rusak (salt tidak valid).")
-                    return None
-                encrypted_master_key_data = f.read()
-                fernet_key_bytes = derive_key_from_password_and_keyfile(password, salt, keyfile_path)
-                if fernet_key_bytes is None:
-                    logger.error("Gagal menurunkan kunci untuk mendecryption Master Key.")
-                    return None
-                fernet_key = base64.urlsafe_b64encode(fernet_key_bytes[:32])
-                fernet = Fernet(fernet_key)
-                try:
-                    master_key = fernet.decrypt(encrypted_master_key_data)
-                    print(f"{GREEN}✅ Master Key berhasil dimuat.{RESET}")
-                    logger.info("Master Key berhasil dimuat dari file.")
-                except Exception as e:
-                    print(f"{RED}❌ Error: Gagal mendecryption Master Key. Password/Keyfile mungkin salah.{RESET}")
-                    logger.error(f"Gagal mendecryption Master Key: {e}")
-                    return None
-        except FileNotFoundError:
-            if hide_paths:
-                print(f"{RED}❌ Error: File Master Key tidak ditemukan.{RESET}")
-            else:
-                print(f"{RED}❌ Error: File Master Key '{config['master_key_file']}' tidak ditemukan.{RESET}")
-            logger.error(f"File Master Key '{config['master_key_file']}' tidak ditemukan.")
-            return None
-    else:
-        if hide_paths:
-            print(f"{YELLOW}File Master Key tidak ditemukan. Membuat yang baru...{RESET}")
-        else:
-            print(f"{YELLOW}File Master Key '{config['master_key_file']}' tidak ditemukan. Membuat yang baru...{RESET}")
-        master_key = secrets.token_bytes(config["file_key_length"]) # Buat Master Key acak
-        salt = secrets.token_bytes(config["master_key_salt_len"]) # Buat salt acak untuk Encrypted Fernet
-        fernet_key_bytes = derive_key_from_password_and_keyfile(password, salt, keyfile_path)
-        if fernet_key_bytes is None:
-            logger.error("Gagal menurunkan kunci untuk mengencrypted Master Key baru.")
-            return None
-        fernet_key = base64.urlsafe_b64encode(fernet_key_bytes[:32])
-        fernet = Fernet(fernet_key)
-        encrypted_master_key_data = fernet.encrypt(master_key)
-        with open(config["master_key_file"], 'wb') as f:
-            f.write(salt) # Tulis salt dulu
-            f.write(encrypted_master_key_data) # Lalu data terencrypted
-        print(f"{GREEN}✅ Master Key baru berhasil dibuat dan disimpan.{RESET}")
-        logger.info("Master Key baru berhasil dibuat dan disimpan.")
-
-    return master_key
+    """Initializes the KeyManager and returns the latest master key."""
+    key_manager = KeyManager(config["master_key_file"], password, keyfile_path)
+    return key_manager.get_latest_key()
 
 def generate_and_save_keys(password: str, keyfile_path: str = None):
     """Generates and saves RSA and X25519 key pairs."""
-    try:
-        # Generate RSA keys
-        rsa_private_key = rsa.generate_private_key(
-            public_exponent=65537,
-            key_size=config["rsa_key_size"],
-        )
-        # Generate X25519 keys
-        x25519_private_key = x25519.X25519PrivateKey.generate()
+    # Generate RSA keys
+    rsa_private_key = rsa.generate_private_key(
+        public_exponent=65537,
+        key_size=config["rsa_key_size"],
+    )
+    # Generate X25519 keys
+    x25519_private_key = x25519.X25519PrivateKey.generate()
 
-        # Encrypt and save RSA private key
-        salt = secrets.token_bytes(16)
-        key = derive_key_from_password_and_keyfile(password, salt, keyfile_path)
-        if key is None:
-            raise ValueError("Key derivation failed.")
-        pem = rsa_private_key.private_bytes(
-            encoding=serialization.Encoding.PEM,
-            format=serialization.PrivateFormat.PKCS8,
-            encryption_algorithm=serialization.BestAvailableEncryption(key),
-        )
-        with open(config["rsa_private_key_file"], "wb") as f:
-            f.write(salt + pem)
+    # Encrypt and save RSA private key
+    salt = secrets.token_bytes(16)
+    key = derive_key_from_password_and_keyfile(password, salt, keyfile_path)
+    pem = rsa_private_key.private_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PrivateFormat.PKCS8,
+        encryption_algorithm=serialization.BestAvailableEncryption(key),
+    )
+    with open(config["rsa_private_key_file"], "wb") as f:
+        f.write(salt + pem)
 
-        # Encrypt and save X25519 private key
-        salt = secrets.token_bytes(16)
-        key = derive_key_from_password_and_keyfile(password, salt, keyfile_path)
-        if key is None:
-            raise ValueError("Key derivation failed.")
-        pem = x25519_private_key.private_bytes(
-            encoding=serialization.Encoding.PEM,
-            format=serialization.PrivateFormat.PKCS8,
-            encryption_algorithm=serialization.BestAvailableEncryption(key),
-        )
-        with open(config["x25519_private_key_file"], "wb") as f:
-            f.write(salt + pem)
+    # Encrypt and save X25519 private key
+    salt = secrets.token_bytes(16)
+    key = derive_key_from_password_and_keyfile(password, salt, keyfile_path)
+    pem = x25519_private_key.private_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PrivateFormat.PKCS8,
+        encryption_algorithm=serialization.BestAvailableEncryption(key),
+    )
+    with open(config["x25519_private_key_file"], "wb") as f:
+        f.write(salt + pem)
 
-        return rsa_private_key, x25519_private_key
-    except (IOError, OSError) as e:
-        print_error_box(f"Gagal menyimpan file kunci: {e}")
-        logger.error(f"Error saving key file: {e}")
-        return None, None
-    except Exception as e:
-        print_error_box(f"Terjadi error saat membuat kunci: {e}")
-        logger.error(f"Error generating keys: {e}", exc_info=True)
-        return None, None
+    return rsa_private_key, x25519_private_key
 
 def load_keys(password: str, keyfile_path: str = None):
     """Loads RSA and X25519 private keys from files."""
@@ -1368,8 +1464,6 @@ def load_keys(password: str, keyfile_path: str = None):
             salt = f.read(16)
             pem = f.read()
         key = derive_key_from_password_and_keyfile(password, salt, keyfile_path)
-        if key is None:
-            raise ValueError("Key derivation failed.")
         rsa_private_key = serialization.load_pem_private_key(
             pem,
             password=key,
@@ -1380,24 +1474,12 @@ def load_keys(password: str, keyfile_path: str = None):
             salt = f.read(16)
             pem = f.read()
         key = derive_key_from_password_and_keyfile(password, salt, keyfile_path)
-        if key is None:
-            raise ValueError("Key derivation failed.")
         x25519_private_key = serialization.load_pem_private_key(
             pem,
             password=key,
         )
         return rsa_private_key, x25519_private_key
-    except FileNotFoundError:
-        # This is not an error if we are creating new keys
-        return None, None
-    except (ValueError, TypeError):
-        # This is likely a password error
-        print_error_box("Gagal mendekripsi kunci. Password atau keyfile salah.")
-        logger.error("Failed to decrypt keys, likely wrong password/keyfile.", exc_info=True)
-        return None, None
-    except Exception as e:
-        print_error_box(f"Terjadi error saat memuat kunci: {e}")
-        logger.error(f"Error loading keys: {e}", exc_info=True)
+    except (FileNotFoundError, ValueError):
         return None, None
 
 # --- Fungsi Utilitas Kompresi ---
@@ -1438,7 +1520,7 @@ def decompress_data(data) -> bytes:
         # Fallback: kembalikan data asli jika dekompresi gagal (mungkin tidak dikompresi)
         return data
 
-def encrypt_file_simple(input_path: str, output_path: str, password: str, keyfile_path: str = None, add_random_padding: bool = True, hide_paths: bool = False, confirm_filename_prompt: bool = True):
+def encrypt_file_simple(input_path: str, output_path: str, password: str, keyfile_path: str = None, add_random_padding: bool = True, hide_paths: bool = False, confirm_filename_prompt: bool = True, algorithm: str = None):
     """Encrypts a file using a password and optional keyfile.
 
     This function does not use a master key.
@@ -1460,16 +1542,6 @@ def encrypt_file_simple(input_path: str, output_path: str, password: str, keyfil
     logger = logging.getLogger(__name__)
     start_time = time.time()
     output_dir = os.path.dirname(output_path) or "."
-
-    # Input validation
-    if not all(isinstance(arg, str) for arg in [input_path, output_path, password]):
-        print_error_box("Error: Tipe argumen tidak valid.")
-        logger.error("Invalid argument type provided.")
-        return False, None
-    if keyfile_path and not isinstance(keyfile_path, str):
-        print_error_box("Error: Tipe argumen keyfile tidak valid.")
-        logger.error("Invalid keyfile argument type provided.")
-        return False, None
 
     if not os.path.isfile(input_path):
         print_error_box(f"Error: File input '{input_path}' tidak ditemukan.")
@@ -1566,41 +1638,42 @@ def encrypt_file_simple(input_path: str, output_path: str, password: str, keyfil
             padding_added = padding_length
 
         # --- Pilih Algoritma Encrypted ---
-        algo = config.get("encryption_algorithm", "aes-gcm").lower()
+        if algorithm:
+            algo = algorithm
+        else:
+            negotiator = AlgorithmNegotiator(config, CRYPTOGRAPHY_AVAILABLE)
+            algo = negotiator.get_best_algorithm()
+
         if algo == "aes-gcm":
             if CRYPTOGRAPHY_AVAILABLE:
-                # Perbaikan: Gunakan nonce yang dihasilkan secara acak, bukan salt
                 nonce = secrets.token_bytes(config["gcm_nonce_len"])
                 cipher = AESGCM(key)
                 ciphertext = cipher.encrypt(nonce, data, associated_data=None)
-                tag = b"" # AESGCM (cryptography) menggabungkan tag
-            elif PYCRYPTODOME_AVAILABLE: # <-- Sekarang variabel ini selalu didefinisikan
-                nonce = get_random_bytes(config["gcm_nonce_len"]) # Gunakan get_random_bytes dari pycryptodome
+                tag = b""
+            elif PYCRYPTODOME_AVAILABLE:
+                nonce = get_random_bytes(config["gcm_nonce_len"])
                 cipher = AES.new(key, AES.MODE_GCM, nonce=nonce)
                 ciphertext, tag = cipher.encrypt_and_digest(data)
-            else:
-                print(f"{RED}❌ Error: Tidak ada pustaka tersedia untuk algoritma '{algo}'.{RESET}")
-                logger.error(f"Tidak ada pustaka tersedia untuk algoritma '{algo}'.")
-                return False, None
         elif algo == "chacha20-poly1305":
-            if CRYPTOGRAPHY_AVAILABLE:
-                nonce = secrets.token_bytes(12)  # ChaCha20Poly1305 uses a 12-byte nonce
-                cipher = ChaCha20Poly1305(key)
-                ciphertext = cipher.encrypt(nonce, data, associated_data=None)
-                tag = b""  # ChaCha20Poly1305 (cryptography) includes the tag
-            else:
-                print(f"{RED}❌ Error: Algoritma '{algo}' memerlukan modul 'cryptography'.{RESET}")
-                logger.error(f"Algoritma '{algo}' tidak tersedia tanpa 'cryptography'.")
-                return False, None
+            nonce = secrets.token_bytes(12)
+            cipher = ChaCha20Poly1305(key)
+            ciphertext = cipher.encrypt(nonce, data, associated_data=None)
+            tag = b""
+        elif algo == "aes-siv":
+            nonce = secrets.token_bytes(16)
+            cipher = AESSIV(key)
+            ciphertext = cipher.encrypt(data, [nonce])
+            tag = b""
         else:
-            print(f"{RED}❌ Error: Algoritma encrypted '{algo}' tidak dikenal atau tidak didukung di versi ini.{RESET}")
-            logger.error(f"Algoritma encrypted '{algo}' tidak dikenal atau tidak didukung di versi ini.")
+            print(f"{RED}❌ Error: Algoritma enkripsi '{algo}' tidak dikenal atau tidak didukung.{RESET}")
+            logger.error(f"Encryption algorithm '{algo}' not supported.")
             return False, None
 
         # AEAD ciphers like AES-GCM and ChaCha20-Poly1305 provide authentication, so a separate HMAC is not needed.
 
         # --- V10/V11/V12/V13/V14: Custom File Format Shuffle & Dynamic Header (Variable Parts) ---
         parts_to_write = [
+            ("algorithm", algo.encode('utf-8')),
             ("nonce", nonce),
             ("checksum", original_checksum),
             ("padding_added", padding_added.to_bytes(config["padding_size_length"], byteorder='big')),
@@ -1760,16 +1833,6 @@ def decrypt_file_simple(input_path: str, output_path: str, password: str, keyfil
     logger = logging.getLogger(__name__)
     start_time = time.time()
 
-    # Input validation
-    if not all(isinstance(arg, str) for arg in [input_path, output_path, password]):
-        print_error_box("Error: Tipe argumen tidak valid.")
-        logger.error("Invalid argument type provided.")
-        return False, None
-    if keyfile_path and not isinstance(keyfile_path, str):
-        print_error_box("Error: Tipe argumen keyfile tidak valid.")
-        logger.error("Invalid keyfile argument type provided.")
-        return False, None
-
     if not os.path.isfile(input_path):
         print(f"{RED}❌ Error: File input '{input_path}' tidak ditemukan.{RESET}")
         logger.error(f"File input '{input_path}' tidak ditemukan.")
@@ -1842,6 +1905,11 @@ def decrypt_file_simple(input_path: str, output_path: str, password: str, keyfil
             encrypted_header_size = int.from_bytes(encrypted_header_size_bytes, byteorder='big')
 
             # --- V18: Decrypt Meta Header ---
+            if version < 2:
+                print_error_box(f"Format file V{version} sudah usang dan tidak didukung lagi.")
+                logger.error(f"Unsupported file format version V{version} in {input_path}.")
+                return False, None
+
             header_nonce = infile.read(config["gcm_nonce_len"])
             encrypted_structure_payload = infile.read(encrypted_header_size)
 
@@ -1884,13 +1952,14 @@ def decrypt_file_simple(input_path: str, output_path: str, password: str, keyfil
 
 
         # Ambil bagian-bagian yang diperlukan
+        algo = parts_read.get("algorithm").decode('utf-8')
         nonce = parts_read.get("nonce")
         stored_checksum = parts_read.get("checksum")
         padding_size_bytes = parts_read.get("padding_added")
         tag = parts_read.get("tag") # Bisa None jika cryptography
         ciphertext = parts_read.get("ciphertext")
 
-        if not all([nonce, stored_checksum, padding_size_bytes, ciphertext]):
+        if not all([algo, nonce, stored_checksum, padding_size_bytes, ciphertext]):
              print(f"{RED}❌ Error: File input tidak valid atau rusak (bagian penting hilang).{RESET}")
              logger.error(f"File input '{input_path}' rusak atau tidak lengkap.")
              return False, None
@@ -1910,43 +1979,28 @@ def decrypt_file_simple(input_path: str, output_path: str, password: str, keyfil
         # AEAD ciphers like AES-GCM and ChaCha20-Poly1305 provide authentication, so a separate HMAC is not needed.
 
         # --- Decryption berdasarkan algoritma ---
-        algo = config.get("encryption_algorithm", "aes-gcm").lower()
-        if algo == "aes-gcm":
-            if PYCRYPTODOME_AVAILABLE: # <-- Sekarang variabel ini selalu didefinisikan
-                # Perbaikan: Gunakan nonce yang dibaca dari file
-                cipher = AES.new(key, AES.MODE_GCM, nonce=nonce)
-                try:
-                    plaintext_data = cipher.decrypt_and_verify(ciphertext, tag)
-                except ValueError:
-                    print(f"{RED}❌ Error: Decryption gagal. Password atau Keyfile mungkin salah, atau file rusak (otentikasi AES-GCM gagal).{RESET}")
-                    logger.error(f"Decryption gagal (otentikasi AES-GCM pycryptodome) untuk {input_path}") # Perbaikan: gunakan input_path
-                    return False, None
-            elif CRYPTOGRAPHY_AVAILABLE:
-                # Perbaikan: Gunakan nonce yang dibaca dari file
-                cipher = AESGCM(key)
-                try:
-                    plaintext_data = cipher.decrypt(nonce, ciphertext, associated_data=None) # Gunakan nonce yang dibaca
-                except Exception as e:
-                    print(f"{RED}❌ Error: Decryption gagal. Password atau Keyfile mungkin salah, atau file rusak (otentikasi AES-GCM cryptography gagal).{RESET}")
-                    logger.error(f"Decryption gagal (otentikasi AES-GCM cryptography) untuk {input_path}: {e}") # Perbaikan: gunakan input_path
-                    return False, None
-            else:
-                print(f"{RED}❌ Error: Tidak ada pustaka tersedia untuk decryption AES-GCM.{RESET}")
-                logger.error(f"Tidak ada pustaka tersedia untuk decryption AES-GCM.")
-                return False, None
-        elif algo == "chacha20-poly1305":
-            if CRYPTOGRAPHY_AVAILABLE:
-                cipher = ChaCha20Poly1305(key)
-                try:
+        try:
+            if algo == "aes-gcm":
+                if CRYPTOGRAPHY_AVAILABLE:
+                    cipher = AESGCM(key)
                     plaintext_data = cipher.decrypt(nonce, ciphertext, associated_data=None)
-                except Exception as e:
-                    print(f"{RED}❌ Error: Decryption gagal. Kunci mungkin salah atau file rusak (otentikasi ChaCha20-Poly1305 gagal).{RESET}")
-                    logger.error(f"Decryption gagal (otentikasi ChaCha20-Poly1305) untuk {input_path}: {e}")
-                    return False, None
+                elif PYCRYPTODOME_AVAILABLE:
+                    cipher = AES.new(key, AES.MODE_GCM, nonce=nonce)
+                    plaintext_data = cipher.decrypt_and_verify(ciphertext, tag)
+            elif algo == "chacha20-poly1305":
+                cipher = ChaCha20Poly1305(key)
+                plaintext_data = cipher.decrypt(nonce, ciphertext, associated_data=None)
+            elif algo == "aes-siv":
+                cipher = AESSIV(key)
+                plaintext_data = cipher.decrypt(ciphertext, [nonce])
             else:
-                print(f"{RED}❌ Error: Algoritma '{algo}' memerlukan modul 'cryptography'.{RESET}")
-                logger.error(f"Algoritma '{algo}' tidak tersedia tanpa 'cryptography'.")
+                print(f"{RED}❌ Error: Algoritma dekripsi '{algo}' tidak dikenal atau tidak didukung.{RESET}")
+                logger.error(f"Decryption algorithm '{algo}' not supported.")
                 return False, None
+        except (ValueError, exceptions.InvalidTag) as e:
+            print(f"{RED}❌ Error: Dekripsi gagal. Kunci salah atau file rusak.{RESET}")
+            logger.error(f"Decryption failed: {e}", exc_info=True)
+            return False, None
         if padding_added > 0:
             if len(plaintext_data) < padding_added:
                 print(f"{RED}❌ Error: File input rusak (padding yang disimpan lebih besar dari data hasil decryption).{RESET}")
@@ -2191,13 +2245,14 @@ def remove_curve25519_layer(input_path: str, output_path: str, password: str, ke
         logger.error(f"Error removing Curve25519 layer: {e}")
         return False
 
-def encrypt_file_with_master_key(input_path: str, output_path: str, master_key: bytes, add_random_padding: bool = True, hide_paths: bool = False):
-    """Encrypts a file using a master key.
+def encrypt_file_with_master_key(input_path: str, output_path: str, password: str, keyfile_path: str, add_random_padding: bool = True, hide_paths: bool = False):
+    """Encrypts a file using the latest master key.
 
     Args:
         input_path (str): The path to the file to encrypt.
         output_path (str): The path to write the encrypted file to.
-        master_key (bytes): The master key to use for encryption.
+        password (str): The password for the master key.
+        keyfile_path (str): The path to the keyfile for the master key.
         add_random_padding (bool): Whether to add random padding to the file.
         hide_paths (bool): Whether to hide the file paths in the output.
 
@@ -2208,16 +2263,6 @@ def encrypt_file_with_master_key(input_path: str, output_path: str, master_key: 
     logger = logging.getLogger(__name__)
     start_time = time.time()
     output_dir = os.path.dirname(output_path) or "."
-
-    # Input validation
-    if not isinstance(input_path, str) or not isinstance(output_path, str):
-        print_error_box("Error: Tipe argumen path tidak valid.")
-        logger.error("Invalid path argument type provided.")
-        return False, None
-    if not isinstance(master_key, bytes):
-        print_error_box("Error: Tipe argumen master key tidak valid.")
-        logger.error("Invalid master key argument type provided.")
-        return False, None
 
     if not os.path.isfile(input_path):
         print(f"{RED}❌ Error: File input '{input_path}' tidak ditemukan.{RESET}")
@@ -2305,6 +2350,8 @@ def encrypt_file_with_master_key(input_path: str, output_path: str, master_key: 
 
         # --- Gunakan HKDF untuk derivasi kunci file ---
         file_key = derive_file_key_from_master_key(master_key, input_path) # Gunakan path input untuk HKDF
+        session_key_salt = secrets.token_bytes(16)
+        session_key = derive_session_key_from_file_key(file_key, session_key_salt)
 
         # --- V14: Secure Memory Locking ---
         if config.get("enable_secure_memory_locking", False):
@@ -2315,17 +2362,19 @@ def encrypt_file_with_master_key(input_path: str, output_path: str, master_key: 
             if config.get("enable_runtime_data_integrity", False):
                 register_sensitive_data(f"file_key_{input_path}", file_key)
 
-        # --- Pilih Algoritma encrypted ---
-        algo = config.get("encryption_algorithm", "aes-gcm").lower()
+        # --- Pilih Algoritma Encrypted ---
+        negotiator = AlgorithmNegotiator(config, CRYPTOGRAPHY_AVAILABLE)
+        algo = negotiator.get_best_algorithm()
+
         if algo == "aes-gcm":
             if CRYPTOGRAPHY_AVAILABLE:
                 nonce = secrets.token_bytes(config["gcm_nonce_len"])
-                cipher = AESGCM(file_key)
+                cipher = AESGCM(session_key)
                 ciphertext = cipher.encrypt(nonce, data, associated_data=None)
                 tag = b"" # AESGCM (cryptography) menggabungkan tag
             elif PYCRYPTODOME_AVAILABLE: # <-- Sekarang variabel ini selalu didefinisikan
                 nonce = get_random_bytes(config["gcm_nonce_len"]) # Gunakan get_random_bytes dari pycryptodome
-                cipher = AES.new(file_key, AES.MODE_GCM, nonce=nonce)
+                cipher = AES.new(session_key, AES.MODE_GCM, nonce=nonce)
                 ciphertext, tag = cipher.encrypt_and_digest(data)
             else:
                 print(f"{RED}❌ Error: Tidak ada pustaka tersedia untuk algoritma '{algo}'.{RESET}")
@@ -2345,6 +2394,8 @@ def encrypt_file_with_master_key(input_path: str, output_path: str, master_key: 
 
         # --- V10/V11/V12/V13/V14: Custom File Format Shuffle & Dynamic Header (Variable Parts) ---
         parts_to_write = [
+            ("algorithm", algo.encode('utf-8')),
+            ("session_key_salt", session_key_salt),
             ("nonce", nonce),
             ("checksum", original_checksum),
             ("padding_added", padding_added.to_bytes(config["padding_size_length"], byteorder='big')),
@@ -2414,6 +2465,7 @@ def encrypt_file_with_master_key(input_path: str, output_path: str, master_key: 
         with open(output_path, 'wb') as outfile:
             print_loading_progress()
             # V18 FIX: Tulis header_salt di luar header terenkripsi
+            outfile.write(key_manager.latest_version.to_bytes(4, byteorder='big'))
             outfile.write(header_salt)
             # Tulis meta header dulu
             outfile.write(header_to_write)
@@ -2489,31 +2541,20 @@ def encrypt_file_with_master_key(input_path: str, output_path: str, master_key: 
         return False, None
 
 
-def decrypt_file_with_master_key(input_path: str, output_path: str, master_key: bytes, hide_paths: bool = False):
-    """Decrypts a file using a master key.
-
+def decrypt_file_with_master_key(input_path: str, output_path: str, password: str, keyfile_path: str, hide_paths: bool = False):
+    """Decrypts a file using the master key.
     Args:
         input_path (str): The path to the file to decrypt.
         output_path (str): The path to write the decrypted file to.
-        master_key (bytes): The master key to use for decryption.
+        password (str): The password for the master key.
+        keyfile_path (str): The path to the keyfile for the master key.
         hide_paths (bool): Whether to hide the file paths in the output.
-
     Returns:
         A tuple containing a boolean indicating success and the path to the
         decrypted file.
     """
     logger = logging.getLogger(__name__)
     start_time = time.time()
-
-    # Input validation
-    if not isinstance(input_path, str) or not isinstance(output_path, str):
-        print_error_box("Error: Tipe argumen path tidak valid.")
-        logger.error("Invalid path argument type provided.")
-        return False, None
-    if not isinstance(master_key, bytes):
-        print_error_box("Error: Tipe argumen master key tidak valid.")
-        logger.error("Invalid master key argument type provided.")
-        return False, None
 
     if not os.path.isfile(input_path):
         print(f"{RED}❌ Error: File input '{input_path}' tidak ditemukan.{RESET}")
@@ -2568,6 +2609,18 @@ def decrypt_file_with_master_key(input_path: str, output_path: str, master_key: 
         file_structure = []
         parts_read = {}
         with open(input_path, 'rb') as infile:
+            key_version_bytes = infile.read(4)
+            if not key_version_bytes or len(key_version_bytes) < 4:
+                print_error_box("File rusak atau format tidak valid (tidak bisa membaca versi kunci).")
+                return False, None
+            key_version = int.from_bytes(key_version_bytes, byteorder='big')
+
+            key_manager = KeyManager(config["master_key_file"], password, keyfile_path)
+            master_key = key_manager.get_key(key_version)
+            if master_key is None:
+                # Error is printed by get_key
+                return False, None
+
             # V18 FIX: Baca header_salt di luar header
             header_salt = infile.read(16)
             # --- V18: Baca Dynamic Meta Header ---
@@ -2585,6 +2638,11 @@ def decrypt_file_with_master_key(input_path: str, output_path: str, master_key: 
             encrypted_header_size = int.from_bytes(encrypted_header_size_bytes, byteorder='big')
 
             # --- V18: Decrypt Meta Header ---
+            if version < 2:
+                print_error_box(f"Format file V{version} sudah usang dan tidak didukung lagi.")
+                logger.error(f"Unsupported file format version V{version} in {input_path}.")
+                return False, None
+
             header_nonce = infile.read(config["gcm_nonce_len"])
             encrypted_structure_payload = infile.read(encrypted_header_size)
 
@@ -2671,22 +2729,26 @@ def decrypt_file_with_master_key(input_path: str, output_path: str, master_key: 
                 register_sensitive_data(f"file_key_{input_path}", file_key)
 
         # AEAD ciphers like AES-GCM and ChaCha20-Poly1305 provide authentication, so a separate HMAC is not needed.
-
-        hmac_key = derive_hmac_key_from_master_key(master_key, input_path)
         # --- V14: Secure Memory Locking untuk HMAC Key ---
         if config.get("enable_secure_memory_locking", False):
-            hmac_key_addr = ctypes.addressof((ctypes.c_char * len(hmac_key)).from_buffer_copy(hmac_key))
-            secure_mlock(hmac_key_addr, len(hmac_key))
-            logger.debug(f"HMAC Key disimpan di memori terkunci untuk {input_path}")
-            # Register untuk integrity check
-            if config.get("enable_runtime_data_integrity", False):
-                register_sensitive_data(f"hmac_key_{input_path}", hmac_key)
+            pass
 
         # --- Decryption berdasarkan algoritma ---
-        algo = config.get("encryption_algorithm", "aes-gcm").lower()
+        session_key_salt = parts_read.get("session_key_salt")
+        if session_key_salt is None:
+            print_error_box("File tidak mengandung salt untuk session key. Mungkin file lama atau rusak.")
+            return False, None
+        session_key = derive_session_key_from_file_key(file_key, session_key_salt)
+
+        algo_bytes = parts_read.get("algorithm")
+        if algo_bytes is None:
+            print_error_box("File tidak mengandung nama algoritma. Format file mungkin lama atau rusak.")
+            return False, None
+        algo = algo_bytes.decode('utf-8')
+
         if algo == "aes-gcm":
             if PYCRYPTODOME_AVAILABLE: # <-- Sekarang variabel ini selalu didefinisikan
-                cipher = AES.new(file_key, AES.MODE_GCM, nonce=nonce)
+                cipher = AES.new(session_key, AES.MODE_GCM, nonce=nonce)
                 try:
                     plaintext_data = cipher.decrypt_and_verify(ciphertext, tag)
                 except ValueError:
@@ -2694,7 +2756,7 @@ def decrypt_file_with_master_key(input_path: str, output_path: str, master_key: 
                     logger.error(f"Decryption gagal (otentikasi AES-GCM pycryptodome) untuk {input_path}") # Perbaikan: gunakan input_path
                     return False, None
             elif CRYPTOGRAPHY_AVAILABLE:
-                cipher = AESGCM(file_key)
+                cipher = AESGCM(session_key)
                 try:
                     plaintext_data = cipher.decrypt(nonce, ciphertext, associated_data=None)
                 except Exception as e:
@@ -2795,6 +2857,7 @@ def decrypt_file_with_master_key(input_path: str, output_path: str, master_key: 
             print(f"{RED}❌ Error saat mendecryption file (dengan Master Key): {e}{RESET}")
             logger.error(f"Error saat mendecryption (dengan Master Key) {input_path}: {e}") # Perbaikan: gunakan input_path
         return False, None
+
 
 
 def encrypt_file_hybrid(input_path: str, output_path: str, password: str, keyfile_path: str = None, hide_paths: bool = False):
@@ -3035,9 +3098,24 @@ def interactive_encrypt():
         if not validate_password_keyfile(password, keyfile_path, interactive=True):
             return
 
-        # --- Base Encryption Layer ---
-        # Defaulting to AES-GCM as the base algorithm to simplify the workflow.
-        base_algorithm = "aes-gcm"
+        # --- Algorithm Selection ---
+        negotiator = AlgorithmNegotiator(config, CRYPTOGRAPHY_AVAILABLE)
+        available_algorithms = [
+            algo for algo, check in negotiator.supported_algorithms.items() if check()
+        ]
+
+        print(f"\n{BOLD}Pilih algoritma enkripsi:{RESET}")
+        for i, algo in enumerate(available_algorithms):
+            print(f"  {i+1}. {algo}")
+
+        choice = input(f"\n{BOLD}Masukkan pilihan (default: {negotiator.get_best_algorithm()}): {RESET}").strip()
+        if choice.isdigit() and 1 <= int(choice) <= len(available_algorithms):
+            base_algorithm = available_algorithms[int(choice) - 1]
+        else:
+            base_algorithm = negotiator.get_best_algorithm()
+
+        print(f"{CYAN}Algoritma yang digunakan: {base_algorithm}{RESET}")
+        config["encryption_algorithm"] = base_algorithm # Set for encryption function
 
         encryption_layers = [base_algorithm]
 
@@ -3054,7 +3132,7 @@ def interactive_encrypt():
         original_algorithm = config["encryption_algorithm"]
         config["encryption_algorithm"] = base_algorithm
 
-        success, _ = encrypt_file_simple(current_file, temp_output_path, password, keyfile_path, confirm_filename_prompt=False)
+        success, _ = encrypt_file_simple(current_file, temp_output_path, password, keyfile_path, confirm_filename_prompt=False, algorithm=base_algorithm)
 
         config["encryption_algorithm"] = original_algorithm # revert config change
 
@@ -3195,7 +3273,7 @@ def interactive_decrypt():
                 success = remove_curve25519_layer(current_file, next_output_file, password, keyfile_path)
             elif layer == "rsa":
                 success = remove_rsa_layer(current_file, next_output_file, password, keyfile_path)
-            elif layer in ["aes-gcm", "chacha20-poly1305"]:
+            elif layer in ["aes-gcm", "chacha20-poly1305", "aes-siv"]:
                 # Temporarily set the config for decrypt_file_simple
                 original_algorithm = config["encryption_algorithm"]
                 config["encryption_algorithm"] = layer
@@ -3388,12 +3466,21 @@ def main():
     parser.add_argument('--enable-compression', action='store_true', help='Aktifkan kompresi zlib sebelum encrypted (menggunakan konfigurasi)')
     parser.add_argument('--disable-compression', action='store_true', help='Nonaktifkan kompresi zlib sebelum encrypted')
     parser.add_argument('--config', type=str, help='Path to the configuration file')
+    parser.add_argument('--rotate-key', action='store_true', help='Rotate the master key')
 
     args = parser.parse_args()
 
     if args.config:
         global CONFIG_FILE
         CONFIG_FILE = args.config
+
+    if args.rotate_key:
+        if not args.password:
+            print_error_box("Error: Argumen --password wajib untuk rotasi kunci.")
+            sys.exit(1)
+        key_manager = KeyManager(config["master_key_file"], args.password, args.keyfile)
+        key_manager.rotate_key()
+        sys.exit(0)
 
     # Baca password dari file jika diset
     if args.password_file:
@@ -3471,19 +3558,13 @@ def main():
                     sys.exit(0)
 
         if config["encryption_algorithm"] == "hybrid-rsa-x25519":
-            if not CRYPTOGRAPHY_AVAILABLE:
-                print_error_box("Hybrid encryption requires the 'cryptography' module.")
-                sys.exit(1)
             if args.encrypt:
                 rsa_private_key, x25519_private_key = load_keys(password, keyfile_path)
                 if rsa_private_key is None:
                     print(f"{YELLOW}Kunci tidak ditemukan. Membuat kunci baru...{RESET}")
                     rsa_private_key, x25519_private_key = generate_and_save_keys(password, keyfile_path)
-                    if rsa_private_key is None:
-                        print_error_box("Gagal membuat kunci. Operasi dibatalkan.")
-                        sys.exit(1)
                     print(f"{GREEN}Kunci baru berhasil dibuat dan disimpan.{RESET}")
-                encrypt_file_hybrid(input_path, output_path, password, keyfile_path, hide_paths=hide_paths)
+                encrypt_file_hybrid(input_path, output_path, rsa_private_key, x25519_private_key, hide_paths=hide_paths)
                 print_box(f"Enkripsi selesai: {input_path} -> {output_path}")
             elif args.decrypt:
                 rsa_private_key, x25519_private_key = load_keys(password, keyfile_path)
@@ -3491,19 +3572,15 @@ def main():
                     print_error_box("Gagal memuat kunci. Periksa kata sandi/keyfile Anda.")
                     sys.exit(1)
                 try:
-                    decrypt_file_hybrid(input_path, output_path, password, keyfile_path, hide_paths=hide_paths)
+                    decrypt_file_hybrid(input_path, output_path, rsa_private_key.public_key(), x25519_private_key, hide_paths=hide_paths)
                     print_box(f"Dekripsi selesai: {input_path} -> {output_path}")
-                except (exceptions.InvalidSignature, ValueError) as e:
-                    print_error_box(f"Dekripsi gagal: {e}")
+                except exceptions.InvalidSignature:
+                    print_error_box("Tanda tangan tidak valid. File mungkin rusak atau kunci salah.")
                     sys.exit(1)
         else: # aes-gcm
             if args.encrypt:
                 if CRYPTOGRAPHY_AVAILABLE:
-                    master_key = load_or_create_master_key(password, keyfile_path, hide_paths=hide_paths)
-                    if master_key is None:
-                        print_error_box("Gagal mendapatkan Master Key.")
-                        sys.exit(1)
-                    encryption_success, created_output = encrypt_file_with_master_key(input_path, output_path, master_key, add_random_padding=add_padding, hide_paths=hide_paths)
+                    encryption_success, created_output = encrypt_file_with_master_key(input_path, output_path, password, keyfile_path, add_random_padding=add_padding, hide_paths=hide_paths)
                 else:
                     encryption_success, created_output = encrypt_file_simple(input_path, output_path, password, keyfile_path, add_random_padding=add_padding, hide_paths=hide_paths)
                 if encryption_success:
@@ -3513,14 +3590,7 @@ def main():
                     sys.exit(1)
             elif args.decrypt:
                 if CRYPTOGRAPHY_AVAILABLE:
-                    if not os.path.exists(config["master_key_file"]):
-                        print_error_box(f"Error: File Master Key '{config['master_key_file']}' tidak ditemukan. Tidak dapat mendekripsi tanpanya.")
-                        sys.exit(1)
-                    master_key = load_or_create_master_key(password, keyfile_path, hide_paths=hide_paths)
-                    if master_key is None:
-                        print_error_box("Gagal mendapatkan Master Key.")
-                        sys.exit(1)
-                    decryption_success, created_output = decrypt_file_with_master_key(input_path, output_path, master_key, hide_paths=hide_paths)
+                    decryption_success, created_output = decrypt_file_with_master_key(input_path, output_path, password, keyfile_path, hide_paths=hide_paths)
                 else:
                     decryption_success, created_output = decrypt_file_simple(input_path, output_path, password, keyfile_path, hide_paths=hide_paths)
                 if decryption_success:
