@@ -69,5 +69,9 @@
     "header_derivation_info": "thena_header_enc_key_",
     "enable_decoy_blocks": true,
     "decoy_block_max_size": 1024,
-    "decoy_block_count": 5
+    "decoy_block_count": 5,
+    "key_rotation_policy": {
+        "enabled": true,
+        "interval_days": 90
+    }
 }

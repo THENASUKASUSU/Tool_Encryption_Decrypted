@@ -1174,6 +1174,159 @@ class HybridCipher:
 
         return True
 
+
+class KeyManager:
+    """Manages key versions, rotation, and keystore."""
+
+    def __init__(self, keystore_path, password, keyfile_path=None):
+        self.keystore_path = keystore_path
+        self.password = password
+        self.keyfile_path = keyfile_path
+        self.keystore = self._load_or_initialize_keystore()
+
+    def _derive_keystore_key(self, salt):
+        """Derives the encryption key for the keystore."""
+        return derive_key_from_password_and_keyfile(self.password, salt, self.keyfile_path)
+
+    def _load_or_initialize_keystore(self):
+        """Loads the keystore from file or creates a new one."""
+        if os.path.exists(self.keystore_path):
+            try:
+                with open(self.keystore_path, 'rb') as f:
+                    salt = f.read(16)
+                    nonce = f.read(12)
+                    encrypted_data = f.read()
+
+                keystore_key = self._derive_keystore_key(salt)
+                if keystore_key is None:
+                    raise ValueError("Gagal menurunkan kunci keystore.")
+
+                cipher = AESGCM(keystore_key)
+                decrypted_data = cipher.decrypt(nonce, encrypted_data, None)
+                return json.loads(decrypted_data.decode('utf-8'))
+            except (FileNotFoundError, ValueError, json.JSONDecodeError) as e:
+                print_error_box(f"Gagal memuat keystore, mungkin rusak atau password salah: {e}")
+                logger.error(f"Gagal memuat keystore: {e}", exc_info=True)
+                # In a real scenario, you might want to handle this more gracefully
+                # For now, we'll exit to prevent creating a new keystore over a potentially recoverable one.
+                sys.exit(1)
+        else:
+            # Keystore does not exist, create a new one with the first master key
+            print(f"{YELLOW}Keystore tidak ditemukan di '{self.keystore_path}'. Membuat yang baru...{RESET}")
+            initial_keystore = {
+                "keys": {},
+                "active_key_version": 1,
+                "key_rotation_policy": config.get("key_rotation_policy", {
+                    "enabled": False,
+                    "interval_days": 90
+                })
+            }
+            self.keystore = initial_keystore
+            self._generate_new_key(is_initial_key=True)
+            self._save_keystore()
+            print(f"{GREEN}Keystore baru berhasil dibuat.{RESET}")
+            return self.keystore
+
+    def _save_keystore(self):
+        """Encrypts and saves the keystore to file."""
+        try:
+            salt = secrets.token_bytes(16)
+            keystore_key = self._derive_keystore_key(salt)
+            if keystore_key is None:
+                raise ValueError("Gagal menurunkan kunci keystore untuk menyimpan.")
+
+            keystore_bytes = json.dumps(self.keystore, indent=4).encode('utf-8')
+
+            cipher = AESGCM(keystore_key)
+            nonce = secrets.token_bytes(12)
+            encrypted_data = cipher.encrypt(nonce, keystore_bytes, None)
+
+            with open(self.keystore_path, 'wb') as f:
+                f.write(salt)
+                f.write(nonce)
+                f.write(encrypted_data)
+        except (IOError, OSError, ValueError) as e:
+            print_error_box(f"Gagal menyimpan keystore: {e}")
+            logger.error(f"Gagal menyimpan keystore: {e}", exc_info=True)
+
+
+    def _generate_new_key(self, is_initial_key=False):
+        """Generates a new master key and adds it to the keystore."""
+        new_key_bytes = secrets.token_bytes(config.get("file_key_length", 32))
+        new_key_b64 = base64.b64encode(new_key_bytes).decode('utf-8')
+
+        if is_initial_key:
+            new_version = 1
+        else:
+            # Find the highest existing version number and add 1
+            if self.keystore["keys"]:
+                new_version = max(map(int, self.keystore["keys"].keys())) + 1
+            else:
+                new_version = 1
+
+        self.keystore["keys"][str(new_version)] = {
+            "key": new_key_b64,
+            "creation_date": time.time(),
+            "status": "active"
+        }
+        self.keystore["active_key_version"] = new_version
+
+        # Deactivate the old key if it exists
+        if not is_initial_key and new_version > 1:
+            old_version = str(new_version - 1)
+            if old_version in self.keystore["keys"]:
+                self.keystore["keys"][old_version]["status"] = "inactive"
+
+        logger.info(f"Kunci master baru versi {new_version} dibuat dan diaktifkan.")
+        return new_version
+
+    def rotate_key(self):
+        """Rotates the master key, generating a new one and deactivating the old one."""
+        print(f"{CYAN}Memulai rotasi kunci master...{RESET}")
+        active_version = self.get_active_key_version()
+        new_version = self._generate_new_key()
+        self._save_keystore()
+        print(f"{GREEN}✅ Rotasi kunci berhasil. Kunci aktif sekarang adalah versi {new_version} (sebelumnya {active_version}).{RESET}")
+
+
+    def get_active_key(self):
+        """Returns the active master key bytes."""
+        active_version = str(self.keystore["active_key_version"])
+        key_info = self.keystore["keys"].get(active_version)
+        if not key_info or key_info["status"] != "active":
+            raise ValueError("Tidak ada kunci aktif yang ditemukan di keystore.")
+        return base64.b64decode(key_info["key"])
+
+    def get_key_by_version(self, version):
+        """Returns a specific master key bytes by its version."""
+        key_info = self.keystore["keys"].get(str(version))
+        if not key_info:
+            raise ValueError(f"Kunci versi {version} tidak ditemukan di keystore.")
+        return base64.b64decode(key_info["key"])
+
+    def get_active_key_version(self):
+        """Returns the active master key version."""
+        return self.keystore["active_key_version"]
+
+    def check_rotation_policy(self):
+        """Checks if the active key has expired and needs rotation."""
+        policy = self.keystore.get("key_rotation_policy", {})
+        if not policy.get("enabled", False):
+            return
+
+        active_version = str(self.keystore["active_key_version"])
+        key_info = self.keystore["keys"].get(active_version)
+        if not key_info:
+            return
+
+        creation_date = key_info.get("creation_date", 0)
+        interval_days = policy.get("interval_days", 90)
+
+        if (time.time() - creation_date) / (24 * 3600) > interval_days:
+            print(f"{YELLOW}Peringatan: Kunci aktif telah melewati kebijakan rotasi ({interval_days} hari).{RESET}")
+            self.rotate_key()
+
+
 # --- Fungsi Derivasi Kunci Baru (V14 - Parameter KDF Ditingkatkan) ---
 def derive_key_from_password_and_keyfile_pbkdf2(password: str, salt: bytes, keyfile_path: str = None) -> bytes:
     """Derives a key from a password and keyfile using PBKDF2.
@@ -1430,80 +1583,9 @@ def derive_hmac_key_from_master_key(master_key: bytes, input_file_path: str) -> 
         # Fallback ke acak jika HKDF gagal
         return secrets.token_bytes(config["hmac_key_length"])
 
-# --- Fungsi Master Key Management ---
-def load_or_create_master_key(password: str, keyfile_path: str, hide_paths: bool = False):
-    """Loads a master key from a file or creates a new one.
-
-    If the master key file exists, this function attempts to decrypt it
-    using the provided password and keyfile. If the file does not exist,
-    a new master key is generated and saved to the file.
-
-    Args:
-        password: The password to use for decrypting or creating the master
-            key.
-        keyfile_path: The path to the keyfile to use for decrypting or
-            creating the master key.
-        hide_paths (bool): Whether to hide the file paths in the output.
-
-    Returns:
-        The loaded or created master key, or None if an error occurs.
-    """
-    master_key = None
-    if os.path.exists(config["master_key_file"]):
-        if hide_paths:
-            print(f"{CYAN}Memuat Master Key...{RESET}")
-        else:
-            print(f"{CYAN}Memuat Master Key dari '{config['master_key_file']}'...{RESET}")
-        try:
-            with open(config["master_key_file"], 'rb') as f:
-                salt = f.read(config["master_key_salt_len"])
-                if len(salt) != config["master_key_salt_len"]:
-                    print(f"{RED}❌ Error: File Master Key rusak (salt tidak valid).{RESET}")
-                    logger.error("File Master Key rusak (salt tidak valid).")
-                    return None
-                encrypted_master_key_data = f.read()
-                fernet_key_bytes = derive_key_from_password_and_keyfile(password, salt, keyfile_path)
-                if fernet_key_bytes is None:
-                    logger.error("Gagal menurunkan kunci untuk mendecryption Master Key.")
-                    return None
-                fernet_key = base64.urlsafe_b64encode(fernet_key_bytes[:32])
-                fernet = Fernet(fernet_key)
-                try:
-                    master_key = fernet.decrypt(encrypted_master_key_data)
-                    print(f"{GREEN}✅ Master Key berhasil dimuat.{RESET}")
-                    logger.info("Master Key berhasil dimuat dari file.")
-                except Exception as e:
-                    print(f"{RED}❌ Error: Gagal mendecryption Master Key. Password/Keyfile mungkin salah.{RESET}")
-                    logger.error(f"Gagal mendecryption Master Key: {e}")
-                    return None
-        except FileNotFoundError:
-            if hide_paths:
-                print(f"{RED}❌ Error: File Master Key tidak ditemukan.{RESET}")
-            else:
-                print(f"{RED}❌ Error: File Master Key '{config['master_key_file']}' tidak ditemukan.{RESET}")
-            logger.error(f"File Master Key '{config['master_key_file']}' tidak ditemukan.")
-            return None
-    else:
-        if hide_paths:
-            print(f"{YELLOW}File Master Key tidak ditemukan. Membuat yang baru...{RESET}")
-        else:
-            print(f"{YELLOW}File Master Key '{config['master_key_file']}' tidak ditemukan. Membuat yang baru...{RESET}")
-        master_key = secrets.token_bytes(config["file_key_length"]) # Buat Master Key acak
-        salt = secrets.token_bytes(config["master_key_salt_len"]) # Buat salt acak untuk Encrypted Fernet
-        fernet_key_bytes = derive_key_from_password_and_keyfile(password, salt, keyfile_path)
-        if fernet_key_bytes is None:
-            logger.error("Gagal menurunkan kunci untuk mengencrypted Master Key baru.")
-            return None
-        fernet_key = base64.urlsafe_b64encode(fernet_key_bytes[:32])
-        fernet = Fernet(fernet_key)
-        encrypted_master_key_data = fernet.encrypt(master_key)
-        with open(config["master_key_file"], 'wb') as f:
-            f.write(salt) # Tulis salt dulu
-            f.write(encrypted_master_key_data) # Lalu data terencrypted
-        print(f"{GREEN}✅ Master Key baru berhasil dibuat dan disimpan.{RESET}")
-        logger.info("Master Key baru berhasil dibuat dan disimpan.")
-
-    return master_key
+# --- Fungsi Master Key Management (DEPRECATED) ---
+# Fungsi load_or_create_master_key sekarang sudah usang dan digantikan oleh KeyManager.
+# Disimpan untuk referensi atau kompatibilitas mundur jika diperlukan di masa depan.
 
 def generate_and_save_keys(password: str, keyfile_path: str = None):
     """Generates and saves RSA and X25519 key pairs."""
@@ -2385,13 +2467,14 @@ def remove_curve25519_layer(input_path: str, output_path: str, password: str, ke
         logger.error(f"Error removing Curve25519 layer: {e}")
         return False
 
-def encrypt_file_with_master_key(input_path: str, output_path: str, master_key: bytes, add_random_padding: bool = True, hide_paths: bool = False):
+def encrypt_file_with_master_key(input_path: str, output_path: str, master_key: bytes, key_version: int, add_random_padding: bool = True, hide_paths: bool = False):
     """Encrypts a file using a master key.
 
     Args:
         input_path (str): The path to the file to encrypt.
         output_path (str): The path to write the encrypted file to.
         master_key (bytes): The master key to use for encryption.
+        key_version (int): The version of the master key used.
         add_random_padding (bool): Whether to add random padding to the file.
         hide_paths (bool): Whether to hide the file paths in the output.
 
@@ -2539,6 +2622,7 @@ def encrypt_file_with_master_key(input_path: str, output_path: str, master_key: 
 
         # --- V10/V11/V12/V13/V14: Custom File Format Shuffle & Dynamic Header (Variable Parts) ---
         parts_to_write = [
+            ("key_version", str(key_version).encode('utf-8')),
             ("nonce", nonce),
             ("checksum", original_checksum),
             ("padding_added", padding_added.to_bytes(config["padding_size_length"], byteorder='big')),
@@ -2683,13 +2767,13 @@ def encrypt_file_with_master_key(input_path: str, output_path: str, master_key: 
         return False, None
 
 
-def decrypt_file_with_master_key(input_path: str, output_path: str, master_key: bytes, hide_paths: bool = False):
-    """Decrypts a file using a master key.
+def decrypt_file_with_master_key(input_path: str, output_path: str, key_manager: KeyManager, hide_paths: bool = False):
+    """Decrypts a file using a master key from the KeyManager.
 
     Args:
         input_path (str): The path to the file to decrypt.
         output_path (str): The path to write the decrypted file to.
-        master_key (bytes): The master key to use for decryption.
+        key_manager (KeyManager): The KeyManager instance to use for retrieving the key.
         hide_paths (bool): Whether to hide the file paths in the output.
 
     Returns:
@@ -2704,9 +2788,9 @@ def decrypt_file_with_master_key(input_path: str, output_path: str, master_key: 
         print_error_box("Error: Tipe argumen path tidak valid.")
         logger.error("Invalid path argument type provided.")
         return False, None
-    if not isinstance(master_key, bytes):
-        print_error_box("Error: Tipe argumen master key tidak valid.")
-        logger.error("Invalid master key argument type provided.")
+    if not isinstance(key_manager, KeyManager):
+        print_error_box("Error: Tipe argumen key manager tidak valid.")
+        logger.error("Invalid key manager argument type provided.")
         return False, None
 
     if not os.path.isfile(input_path):
@@ -2820,6 +2904,13 @@ def decrypt_file_with_master_key(input_path: str, output_path: str, master_key: 
 
 
         # Ambil bagian-bagian yang diperlukan
+        key_version_bytes = parts_read.get("key_version")
+        if not key_version_bytes:
+            print(f"{RED}❌ Error: File tidak berisi versi kunci. Format mungkin sudah usang atau file rusak.{RESET}")
+            logger.error(f"Versi kunci tidak ditemukan di file: {input_path}")
+            return False, None
+        key_version = int(key_version_bytes.decode('utf-8'))
+
         nonce = parts_read.get("nonce")
         stored_checksum = parts_read.get("checksum")
         padding_size_bytes = parts_read.get("padding_added")
@@ -2842,6 +2933,13 @@ def decrypt_file_with_master_key(input_path: str, output_path: str, master_key: 
              print(f"{RED}❌ Error: File input rusak (panjang encrypted key tidak sesuai).{RESET}")
              logger.error(f"File input '{input_path}' rusak: panjang encrypted key tidak sesuai.")
              return False, None
+
+        try:
+            master_key = key_manager.get_key_by_version(key_version)
+        except ValueError as e:
+            print(f"{RED}❌ Error: {e}{RESET}")
+            logger.error(f"Gagal mendapatkan kunci versi {key_version}: {e}")
+            return False, None
 
         master_fernet_key = base64.urlsafe_b64encode(master_key)
         master_fernet = Fernet(master_fernet_key)
@@ -2957,15 +3055,6 @@ def decrypt_file_with_master_key(input_path: str, output_path: str, master_key: 
             else:
                 print(f"{GREEN}✅ File '{input_path}' berhasil didecryption ke '{output_path}' (dengan Master Key).{RESET}")
                 logger.info(f"Decryption (dengan Master Key) berhasil dan checksum cocok: {input_path} -> {output_path}")
-
-            if os.path.exists(config["master_key_file"]):
-                try:
-                    os.remove(config["master_key_file"])
-                    print(f"{GREEN}✅ File Master Key '{config['master_key_file']}' dihapus secara otomatis setelah decryption.{RESET}")
-                    logger.info(f"File Master Key '{config['master_key_file']}' dihapus secara otomatis setelah decryption berhasil.")
-                except OSError as e:
-                    print(f"{YELLOW}⚠️  Peringatan: Gagal menghapus file Master Key '{config['master_key_file']}' secara otomatis: {e}{RESET}")
-                    logger.warning(f"Gagal menghapus file Master Key '{config['master_key_file']}' secara otomatis: {e}")
 
             return True, output_path
         else:
@@ -3503,6 +3592,8 @@ def main():
     parser.add_argument('--disable-compression', action='store_true', help='Nonaktifkan kompresi zlib sebelum encrypted')
     parser.add_argument('--config', type=str, help='Path to the configuration file')
     parser.add_argument('--algo', type=str, help='Algoritma enkripsi yang akan digunakan (misalnya, aes-gcm, chacha20-poly1305)')
+    parser.add_argument('--rotate-key', action='store_true', help='Lakukan rotasi kunci master secara manual.')
+    parser.add_argument('--keystore', type=str, default='thena_keystore.json', help='Path ke file keystore.')
 
     args = parser.parse_args()
 
@@ -3620,32 +3711,31 @@ def main():
                     print_error_box(f"Dekripsi gagal: {e}")
                     sys.exit(1)
         else: # aes-gcm
+            # --- KeyManager Integration ---
+            key_manager = KeyManager(args.keystore, password, keyfile_path)
+            key_manager.check_rotation_policy() # Automatically rotate if policy dictates
+
+            if args.rotate_key:
+                key_manager.rotate_key()
+                print_box("Rotasi kunci selesai.")
+                sys.exit(0)
+
             if args.encrypt:
-                if CRYPTOGRAPHY_AVAILABLE:
-                    master_key = load_or_create_master_key(password, keyfile_path, hide_paths=hide_paths)
-                    if master_key is None:
-                        print_error_box("Gagal mendapatkan Master Key.")
-                        sys.exit(1)
-                    encryption_success, created_output = encrypt_file_with_master_key(input_path, output_path, master_key, add_random_padding=add_padding, hide_paths=hide_paths)
-                else:
-                    encryption_success, created_output = encrypt_file_simple(input_path, output_path, password, keyfile_path, add_random_padding=add_padding, hide_paths=hide_paths)
+                master_key = key_manager.get_active_key()
+                active_version = key_manager.get_active_key_version()
+                encryption_success, created_output = encrypt_file_with_master_key(
+                    input_path, output_path, master_key, active_version,
+                    add_random_padding=add_padding, hide_paths=hide_paths
+                )
                 if encryption_success:
                     print_box(f"Enkripsi selesai: {input_path} -> {created_output}")
                 else:
                     print_error_box("Enkripsi gagal.")
                     sys.exit(1)
             elif args.decrypt:
-                if CRYPTOGRAPHY_AVAILABLE:
-                    if not os.path.exists(config["master_key_file"]):
-                        print_error_box(f"Error: File Master Key '{config['master_key_file']}' tidak ditemukan. Tidak dapat mendekripsi tanpanya.")
-                        sys.exit(1)
-                    master_key = load_or_create_master_key(password, keyfile_path, hide_paths=hide_paths)
-                    if master_key is None:
-                        print_error_box("Gagal mendapatkan Master Key.")
-                        sys.exit(1)
-                    decryption_success, created_output = decrypt_file_with_master_key(input_path, output_path, master_key, hide_paths=hide_paths)
-                else:
-                    decryption_success, created_output = decrypt_file_simple(input_path, output_path, password, keyfile_path, hide_paths=hide_paths)
+                decryption_success, created_output = decrypt_file_with_master_key(
+                    input_path, output_path, key_manager, hide_paths=hide_paths
+                )
                 if decryption_success:
                     print_box(f"Dekripsi selesai: {input_path} -> {created_output}")
                 else:
