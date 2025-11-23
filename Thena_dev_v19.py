@@ -1315,37 +1315,50 @@ def load_or_create_master_key(password: str, keyfile_path: str, hide_paths: bool
 
 def generate_and_save_keys(password: str, keyfile_path: str = None):
     """Generates and saves RSA and X25519 key pairs."""
-    # Generate RSA keys
-    rsa_private_key = rsa.generate_private_key(
-        public_exponent=65537,
-        key_size=config["rsa_key_size"],
-    )
-    # Generate X25519 keys
-    x25519_private_key = x25519.X25519PrivateKey.generate()
+    try:
+        # Generate RSA keys
+        rsa_private_key = rsa.generate_private_key(
+            public_exponent=65537,
+            key_size=config["rsa_key_size"],
+        )
+        # Generate X25519 keys
+        x25519_private_key = x25519.X25519PrivateKey.generate()
 
-    # Encrypt and save RSA private key
-    salt = secrets.token_bytes(16)
-    key = derive_key_from_password_and_keyfile(password, salt, keyfile_path)
-    pem = rsa_private_key.private_bytes(
-        encoding=serialization.Encoding.PEM,
-        format=serialization.PrivateFormat.PKCS8,
-        encryption_algorithm=serialization.BestAvailableEncryption(key),
-    )
-    with open(config["rsa_private_key_file"], "wb") as f:
-        f.write(salt + pem)
+        # Encrypt and save RSA private key
+        salt = secrets.token_bytes(16)
+        key = derive_key_from_password_and_keyfile(password, salt, keyfile_path)
+        if key is None:
+            raise ValueError("Key derivation failed.")
+        pem = rsa_private_key.private_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PrivateFormat.PKCS8,
+            encryption_algorithm=serialization.BestAvailableEncryption(key),
+        )
+        with open(config["rsa_private_key_file"], "wb") as f:
+            f.write(salt + pem)
 
-    # Encrypt and save X25519 private key
-    salt = secrets.token_bytes(16)
-    key = derive_key_from_password_and_keyfile(password, salt, keyfile_path)
-    pem = x25519_private_key.private_bytes(
-        encoding=serialization.Encoding.PEM,
-        format=serialization.PrivateFormat.PKCS8,
-        encryption_algorithm=serialization.BestAvailableEncryption(key),
-    )
-    with open(config["x25519_private_key_file"], "wb") as f:
-        f.write(salt + pem)
+        # Encrypt and save X25519 private key
+        salt = secrets.token_bytes(16)
+        key = derive_key_from_password_and_keyfile(password, salt, keyfile_path)
+        if key is None:
+            raise ValueError("Key derivation failed.")
+        pem = x25519_private_key.private_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PrivateFormat.PKCS8,
+            encryption_algorithm=serialization.BestAvailableEncryption(key),
+        )
+        with open(config["x25519_private_key_file"], "wb") as f:
+            f.write(salt + pem)
 
-    return rsa_private_key, x25519_private_key
+        return rsa_private_key, x25519_private_key
+    except (IOError, OSError) as e:
+        print_error_box(f"Gagal menyimpan file kunci: {e}")
+        logger.error(f"Error saving key file: {e}")
+        return None, None
+    except Exception as e:
+        print_error_box(f"Terjadi error saat membuat kunci: {e}")
+        logger.error(f"Error generating keys: {e}", exc_info=True)
+        return None, None
 
 def load_keys(password: str, keyfile_path: str = None):
     """Loads RSA and X25519 private keys from files."""
@@ -1355,6 +1368,8 @@ def load_keys(password: str, keyfile_path: str = None):
             salt = f.read(16)
             pem = f.read()
         key = derive_key_from_password_and_keyfile(password, salt, keyfile_path)
+        if key is None:
+            raise ValueError("Key derivation failed.")
         rsa_private_key = serialization.load_pem_private_key(
             pem,
             password=key,
@@ -1365,12 +1380,24 @@ def load_keys(password: str, keyfile_path: str = None):
             salt = f.read(16)
             pem = f.read()
         key = derive_key_from_password_and_keyfile(password, salt, keyfile_path)
+        if key is None:
+            raise ValueError("Key derivation failed.")
         x25519_private_key = serialization.load_pem_private_key(
             pem,
             password=key,
         )
         return rsa_private_key, x25519_private_key
-    except (FileNotFoundError, ValueError):
+    except FileNotFoundError:
+        # This is not an error if we are creating new keys
+        return None, None
+    except (ValueError, TypeError):
+        # This is likely a password error
+        print_error_box("Gagal mendekripsi kunci. Password atau keyfile salah.")
+        logger.error("Failed to decrypt keys, likely wrong password/keyfile.", exc_info=True)
+        return None, None
+    except Exception as e:
+        print_error_box(f"Terjadi error saat memuat kunci: {e}")
+        logger.error(f"Error loading keys: {e}", exc_info=True)
         return None, None
 
 # --- Fungsi Utilitas Kompresi ---
@@ -1433,6 +1460,16 @@ def encrypt_file_simple(input_path: str, output_path: str, password: str, keyfil
     logger = logging.getLogger(__name__)
     start_time = time.time()
     output_dir = os.path.dirname(output_path) or "."
+
+    # Input validation
+    if not all(isinstance(arg, str) for arg in [input_path, output_path, password]):
+        print_error_box("Error: Tipe argumen tidak valid.")
+        logger.error("Invalid argument type provided.")
+        return False, None
+    if keyfile_path and not isinstance(keyfile_path, str):
+        print_error_box("Error: Tipe argumen keyfile tidak valid.")
+        logger.error("Invalid keyfile argument type provided.")
+        return False, None
 
     if not os.path.isfile(input_path):
         print_error_box(f"Error: File input '{input_path}' tidak ditemukan.")
@@ -1722,6 +1759,16 @@ def decrypt_file_simple(input_path: str, output_path: str, password: str, keyfil
     """
     logger = logging.getLogger(__name__)
     start_time = time.time()
+
+    # Input validation
+    if not all(isinstance(arg, str) for arg in [input_path, output_path, password]):
+        print_error_box("Error: Tipe argumen tidak valid.")
+        logger.error("Invalid argument type provided.")
+        return False, None
+    if keyfile_path and not isinstance(keyfile_path, str):
+        print_error_box("Error: Tipe argumen keyfile tidak valid.")
+        logger.error("Invalid keyfile argument type provided.")
+        return False, None
 
     if not os.path.isfile(input_path):
         print(f"{RED}❌ Error: File input '{input_path}' tidak ditemukan.{RESET}")
@@ -2162,6 +2209,16 @@ def encrypt_file_with_master_key(input_path: str, output_path: str, master_key: 
     start_time = time.time()
     output_dir = os.path.dirname(output_path) or "."
 
+    # Input validation
+    if not isinstance(input_path, str) or not isinstance(output_path, str):
+        print_error_box("Error: Tipe argumen path tidak valid.")
+        logger.error("Invalid path argument type provided.")
+        return False, None
+    if not isinstance(master_key, bytes):
+        print_error_box("Error: Tipe argumen master key tidak valid.")
+        logger.error("Invalid master key argument type provided.")
+        return False, None
+
     if not os.path.isfile(input_path):
         print(f"{RED}❌ Error: File input '{input_path}' tidak ditemukan.{RESET}")
         logger.error(f"File input '{input_path}' tidak ditemukan.")
@@ -2448,6 +2505,16 @@ def decrypt_file_with_master_key(input_path: str, output_path: str, master_key: 
     logger = logging.getLogger(__name__)
     start_time = time.time()
 
+    # Input validation
+    if not isinstance(input_path, str) or not isinstance(output_path, str):
+        print_error_box("Error: Tipe argumen path tidak valid.")
+        logger.error("Invalid path argument type provided.")
+        return False, None
+    if not isinstance(master_key, bytes):
+        print_error_box("Error: Tipe argumen master key tidak valid.")
+        logger.error("Invalid master key argument type provided.")
+        return False, None
+
     if not os.path.isfile(input_path):
         print(f"{RED}❌ Error: File input '{input_path}' tidak ditemukan.{RESET}")
         logger.error(f"File input '{input_path}' tidak ditemukan.")
@@ -2605,6 +2672,7 @@ def decrypt_file_with_master_key(input_path: str, output_path: str, master_key: 
 
         # AEAD ciphers like AES-GCM and ChaCha20-Poly1305 provide authentication, so a separate HMAC is not needed.
 
+        hmac_key = derive_hmac_key_from_master_key(master_key, input_path)
         # --- V14: Secure Memory Locking untuk HMAC Key ---
         if config.get("enable_secure_memory_locking", False):
             hmac_key_addr = ctypes.addressof((ctypes.c_char * len(hmac_key)).from_buffer_copy(hmac_key))
@@ -2729,6 +2797,129 @@ def decrypt_file_with_master_key(input_path: str, output_path: str, master_key: 
         return False, None
 
 
+def encrypt_file_hybrid(input_path: str, output_path: str, password: str, keyfile_path: str = None, hide_paths: bool = False):
+    """
+    Encrypts a file using a hybrid approach with RSA and X25519 layers.
+    This is a non-interactive version.
+    Order: content -> RSA layer -> Curve25519 layer -> final file with metadata
+    """
+    if not CRYPTOGRAPHY_AVAILABLE:
+        print_error_box("Hybrid encryption requires the 'cryptography' module.")
+        return False
+
+    logger.info(f"Starting hybrid encryption for {input_path}")
+    temp_dir = config.get("temp_dir", "./temp_thena")
+    os.makedirs(temp_dir, exist_ok=True)
+
+    intermediate_files = []
+    current_file = input_path
+
+    try:
+        # Layer 1: RSA
+        temp_fd_rsa, temp_path_rsa = tempfile.mkstemp(suffix=".rsa.tmp", dir=temp_dir)
+        os.close(temp_fd_rsa)
+        intermediate_files.append(temp_path_rsa)
+
+        if not apply_rsa_layer(current_file, temp_path_rsa, password, keyfile_path):
+            print_error_box("Failed to apply RSA layer.")
+            return False
+        current_file = temp_path_rsa
+
+        # Layer 2: Curve25519
+        temp_fd_curve, temp_path_curve = tempfile.mkstemp(suffix=".curve.tmp", dir=temp_dir)
+        os.close(temp_fd_curve)
+        intermediate_files.append(temp_path_curve)
+
+        if not apply_curve25519_layer(current_file, temp_path_curve, password, keyfile_path):
+            print_error_box("Failed to apply Curve25519 layer.")
+            return False
+        current_file = temp_path_curve
+
+        # Finalizing: Add metadata and write to output
+        encryption_layers = ["rsa", "curve25519"]
+        metadata = {"layers": encryption_layers}
+        metadata_bytes = json.dumps(metadata).encode('utf-8')
+        metadata_len = len(metadata_bytes).to_bytes(2, 'big')
+
+        with open(output_path, "wb") as f_out:
+            f_out.write(metadata_len)
+            f_out.write(metadata_bytes)
+            with open(current_file, "rb") as f_in:
+                f_out.write(f_in.read())
+
+        logger.info(f"Hybrid encryption successful for {input_path} to {output_path}")
+        return True
+
+    except Exception as e:
+        print_error_box(f"An error occurred during hybrid encryption: {e}")
+        logger.error(f"Error during hybrid encryption: {e}", exc_info=True)
+        return False
+    finally:
+        for f in intermediate_files:
+            if os.path.exists(f):
+                os.remove(f)
+
+def decrypt_file_hybrid(input_path: str, output_path: str, password: str, keyfile_path: str = None, hide_paths: bool = False):
+    if not CRYPTOGRAPHY_AVAILABLE:
+        print_error_box("Hybrid decryption requires the 'cryptography' module.")
+        return False
+
+    logger.info(f"Starting hybrid decryption for {input_path}")
+    temp_dir = config.get("temp_dir", "./temp_thena")
+    os.makedirs(temp_dir, exist_ok=True)
+
+    intermediate_files = []
+
+    try:
+        encryption_layers, header_size = read_metadata(input_path)
+        if not encryption_layers:
+            print_error_box("Could not read encryption layers from file.")
+            return False
+
+        temp_fd_content, temp_path_content = tempfile.mkstemp(suffix=".content.tmp", dir=temp_dir)
+        os.close(temp_fd_content)
+        intermediate_files.append(temp_path_content)
+
+        with open(input_path, "rb") as f_in, open(temp_path_content, "wb") as f_out:
+            f_in.seek(header_size)
+            f_out.write(f_in.read())
+
+        current_file = temp_path_content
+
+        reversed_layers = encryption_layers[::-1]
+
+        for i, layer in enumerate(reversed_layers):
+            is_last_layer = (i == len(reversed_layers) - 1)
+            next_output_file = output_path if is_last_layer else None
+            if not is_last_layer:
+                temp_fd, temp_path = tempfile.mkstemp(suffix=f".dec_layer_{i}.tmp", dir=temp_dir)
+                os.close(temp_fd)
+                intermediate_files.append(temp_path)
+                next_output_file = temp_path
+
+            success = False
+            if layer == "curve25519":
+                success = remove_curve25519_layer(current_file, next_output_file, password, keyfile_path)
+            elif layer == "rsa":
+                success = remove_rsa_layer(current_file, next_output_file, password, keyfile_path)
+
+            if not success:
+                print_error_box(f"Failed to decrypt layer '{layer}'.")
+                return False
+
+            current_file = next_output_file
+
+        logger.info(f"Hybrid decryption successful for {input_path} to {output_path}")
+        return True
+
+    except Exception as e:
+        print_error_box(f"An error occurred during hybrid decryption: {e}")
+        logger.error(f"Error during hybrid decryption: {e}", exc_info=True)
+        return False
+    finally:
+        for f in intermediate_files:
+            if os.path.exists(f):
+                os.remove(f)
 
 # --- Fungsi UI ---
 def print_box(title, options=None, width=80):
@@ -3280,13 +3471,19 @@ def main():
                     sys.exit(0)
 
         if config["encryption_algorithm"] == "hybrid-rsa-x25519":
+            if not CRYPTOGRAPHY_AVAILABLE:
+                print_error_box("Hybrid encryption requires the 'cryptography' module.")
+                sys.exit(1)
             if args.encrypt:
                 rsa_private_key, x25519_private_key = load_keys(password, keyfile_path)
                 if rsa_private_key is None:
                     print(f"{YELLOW}Kunci tidak ditemukan. Membuat kunci baru...{RESET}")
                     rsa_private_key, x25519_private_key = generate_and_save_keys(password, keyfile_path)
+                    if rsa_private_key is None:
+                        print_error_box("Gagal membuat kunci. Operasi dibatalkan.")
+                        sys.exit(1)
                     print(f"{GREEN}Kunci baru berhasil dibuat dan disimpan.{RESET}")
-                encrypt_file_hybrid(input_path, output_path, rsa_private_key, x25519_private_key, hide_paths=hide_paths)
+                encrypt_file_hybrid(input_path, output_path, password, keyfile_path, hide_paths=hide_paths)
                 print_box(f"Enkripsi selesai: {input_path} -> {output_path}")
             elif args.decrypt:
                 rsa_private_key, x25519_private_key = load_keys(password, keyfile_path)
@@ -3294,10 +3491,10 @@ def main():
                     print_error_box("Gagal memuat kunci. Periksa kata sandi/keyfile Anda.")
                     sys.exit(1)
                 try:
-                    decrypt_file_hybrid(input_path, output_path, rsa_private_key.public_key(), x25519_private_key, hide_paths=hide_paths)
+                    decrypt_file_hybrid(input_path, output_path, password, keyfile_path, hide_paths=hide_paths)
                     print_box(f"Dekripsi selesai: {input_path} -> {output_path}")
-                except exceptions.InvalidSignature:
-                    print_error_box("Tanda tangan tidak valid. File mungkin rusak atau kunci salah.")
+                except (exceptions.InvalidSignature, ValueError) as e:
+                    print_error_box(f"Dekripsi gagal: {e}")
                     sys.exit(1)
         else: # aes-gcm
             if args.encrypt:
