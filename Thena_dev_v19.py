@@ -121,7 +121,16 @@ except ImportError:
     print(f"{YELLOW}⚠️  Modul 'cpuinfo' tidak tersedia. Hardware detection dinonaktifkan.{RESET}")
 
 def safe_cpu_info():
-    """Safe CPU info detection with fallback for Termux"""
+    """Safely retrieves CPU information, with a fallback for Termux.
+
+    This function attempts to get CPU information using the `cpuinfo` library.
+    It includes a fallback mechanism to prevent crashes in environments where
+    `cpuinfo` might fail, such as Termux.
+
+    Returns:
+        A dictionary containing CPU information, or a dictionary with an empty
+        'flags' list if `cpuinfo` is unavailable or fails.
+    """
     if not CPUINFO_AVAILABLE:
         return {'flags': []}
     try:
@@ -365,7 +374,16 @@ def detect_debugging():
     return False
 
 def secure_mlock(addr, length):
-    """Locks memory with Termux compatibility"""
+    """Locks a memory area to prevent it from being swapped to disk.
+
+    This function is a wrapper around the `mlock` syscall, which is used to
+    prevent sensitive data from being written to disk. It includes a fallback
+    for Termux compatibility.
+
+    Args:
+        addr: The starting address of the memory area to lock.
+        length: The length of the memory area to lock.
+    """
     if platform.system() == "Linux" and hasattr(os, 'mlock'):
         try:
             # Try using os.mlock which works better on Android
@@ -384,7 +402,7 @@ def secure_munlock(addr, length):
     """Unlocks a memory area, allowing it to be swapped to disk.
 
     This function is a wrapper around the `munlock` syscall, which is only
-    available on Unix-like systems.
+    available on Unix-like systems. It is the counterpart to `secure_mlock`.
 
     Args:
         addr: The starting address of the memory area to unlock.
@@ -686,7 +704,15 @@ def load_config():
 
 # --- Setup Logging ---
 def setup_logging(interactive_mode=False):
-    """Configures the logging for the application."""
+    """Configures logging for the application.
+
+    Sets up logging to a file and optionally to the console. The log level is
+    determined by the application's configuration.
+
+    Args:
+        interactive_mode (bool): If True, logging to the console is disabled
+            to avoid interfering with the user interface.
+    """
     level = getattr(logging, config.get("log_level", "INFO").upper(), logging.INFO)
 
     # Tentukan handlers berdasarkan mode
@@ -704,11 +730,14 @@ def setup_logging(interactive_mode=False):
     logger.info("=== Encryptor V18 Dimulai ===")
 
 def print_error_box(message, width=80):
-    """Prints an error message in a formatted box.
+    """Prints an error message inside a formatted box.
+
+    This function is used to display error messages in a visually distinct
+    way, making them easier for the user to notice.
 
     Args:
-        message (str): The error message to display.
-        width (int): The width of the box.
+        message (str): The error message to be displayed.
+        width (int): The total width of the box.
     """
     border_color = RED
     text_color = WHITE
@@ -718,7 +747,7 @@ def print_error_box(message, width=80):
     print(f"{border_color}╰" + "─" * (width - 2) + f"╯{reset}")
 
 def print_loading_progress():
-    """Prints a simple loading progress indicator to the console."""
+    """Displays a simple loading progress indicator in the console."""
     for i in range(11):
         progress = i * 10
         print(f"Memproses... {progress}%", end="\r")
@@ -759,19 +788,27 @@ def clear_screen():
 def calculate_checksum(data) -> bytes:
     """Calculates the SHA-256 checksum of the given data.
 
+    This function is used to generate a checksum for data integrity
+    verification.
+
     Args:
-        data (bytes): The data to calculate the checksum for.
+        data (bytes): The data for which to calculate the checksum.
 
     Returns:
-        bytes: The SHA-256 checksum of the data.
+        bytes: The SHA-256 checksum.
     """
     return hashlib.sha256(data).digest()
 
 def secure_wipe_file(file_path: str, passes: int = 5):
-    """Securely wipes a file by overwriting it with random data in chunks.
+    """Securely wipes a file by overwriting it with random data.
+
+    This function overwrites the specified file multiple times with random
+    data before deleting it, making it difficult to recover the original
+    contents.
+
     Args:
-        file_path: The path to the file to wipe.
-        passes: The number of times to overwrite the file.
+        file_path (str): The path to the file to be wiped.
+        passes (int): The number of times to overwrite the file.
     """
     config = load_config()
     if not os.path.exists(file_path):
@@ -819,13 +856,17 @@ def secure_wipe_file(file_path: str, passes: int = 5):
         logger.error(f"Error saat secure wipe file '{file_path}': {e}")
 
 def confirm_overwrite(file_path: str) -> bool:
-    """Asks the user to confirm overwriting a file.
+    """Asks the user for confirmation before overwriting an existing file.
+
+    If the specified file path already exists, this function prompts the user
+    to confirm whether they want to proceed with overwriting it.
 
     Args:
-        file_path: The path to the file to overwrite.
+        file_path (str): The path to the file to be checked.
 
     Returns:
-        True if the user confirms, False otherwise.
+        bool: True if the file does not exist or if the user confirms the
+            overwrite, False otherwise.
     """
     if os.path.exists(file_path):
         confirm = input(f"{YELLOW}File '{file_path}' sudah ada. Ganti? (y/N): {RESET}").strip().lower()
@@ -836,14 +877,18 @@ def confirm_overwrite(file_path: str) -> bool:
     return True
 
 def check_disk_space(file_path: str, output_dir: str) -> bool:
-    """Checks if there is enough disk space to encrypt or decrypt a file.
+    """Checks if there is sufficient disk space for the output file.
+
+    This function estimates the required disk space for an encryption or
+    decryption operation and compares it with the available space in the
+    output directory.
 
     Args:
-        file_path: The path to the input file.
-        output_dir: The path to the output directory.
+        file_path (str): The path to the input file.
+        output_dir (str): The directory where the output file will be saved.
 
     Returns:
-        True if there is enough disk space, False otherwise.
+        bool: True if there is enough disk space, False otherwise.
     """
     try:
         file_size = os.path.getsize(file_path)
@@ -872,15 +917,20 @@ def check_disk_space(file_path: str, output_dir: str) -> bool:
         return False
 
 def validate_password_keyfile(password: str, keyfile_path: str, interactive: bool = True) -> bool:
-    """Validates the strength of the password and the keyfile.
+    """Validates the strength of a password and the existence of a keyfile.
+
+    This function checks for common password weaknesses and verifies that the
+    keyfile, if provided, exists and is of a reasonable size.
 
     Args:
-        password: The password to validate.
-        keyfile_path: The path to the keyfile to validate.
-        interactive: Whether to prompt the user for confirmation.
+        password (str): The password to be validated.
+        keyfile_path (str): The path to the keyfile to be validated.
+        interactive (bool): If True, prompts the user for confirmation if
+            validation issues are found.
 
     Returns:
-        True if the password and keyfile are valid, False otherwise.
+        bool: True if the validation passes or is confirmed by the user,
+            False otherwise.
     """
     issues = []
 
@@ -937,13 +987,17 @@ def validate_password_keyfile(password: str, keyfile_path: str, interactive: boo
     return True
 
 def check_file_size_limit(file_path: str) -> bool:
-    """Checks if a file is within the configured size limit.
+    """Checks if a file's size is within the configured limit.
+
+    This function helps prevent the application from consuming excessive
+    memory or taking an unreasonable amount of time to process very large
+    files.
 
     Args:
-        file_path: The path to the file to check.
+        file_path (str): The path to the file to be checked.
 
     Returns:
-        True if the file is within the size limit, False otherwise.
+        bool: True if the file size is within the limit, False otherwise.
     """
     max_size = config.get("max_file_size", 100 * 1024 * 1024) # 100MB default
     file_size = os.path.getsize(file_path)
@@ -955,14 +1009,18 @@ def check_file_size_limit(file_path: str) -> bool:
     return True
 
 def create_temp_file(suffix=""):
-    """Creates a temporary file.
+    """Creates a temporary file for intermediate processing steps.
+
+    This function generates a temporary file in the directory specified by the
+    application's configuration. The file is registered for automatic cleanup
+    upon program exit.
 
     Args:
-        suffix: The suffix to use for the temporary file.
+        suffix (str): An optional suffix for the temporary file's name.
 
     Returns:
-        The path to the temporary file, or None if temporary files are
-        disabled in the configuration.
+        str: The path to the created temporary file, or None if the use of
+            temporary files is disabled in the configuration.
     """
     if not config.get("enable_temp_files", False):
         return None
@@ -975,15 +1033,16 @@ def create_temp_file(suffix=""):
     return temp_path
 
 def obfuscate_memory(data) -> bytes:
-    """Obfuscates data in memory.
+    """Obfuscates data in memory using a simple XOR cipher.
 
-    This function performs a simple XOR obfuscation on the given data.
+    This function is intended as a lightweight security measure to make it
+    more difficult to extract sensitive information from a memory dump.
 
     Args:
-        data: The data to obfuscate.
+        data (bytes): The data to be obfuscated.
 
     Returns:
-        The obfuscated data.
+        bytes: The obfuscated data.
     """
     if not config.get("enable_memory_obfuscation", False):
         return data
@@ -1000,21 +1059,28 @@ def obfuscate_memory(data) -> bytes:
     return bytes(obfuscated_data)
 
 def deobfuscate_memory(data) -> bytes:
-    """Deobfuscates data in memory.
+    """Deobfuscates data that was obfuscated with `obfuscate_memory`.
 
-    This function performs a simple XOR deobfuscation on the given data.
+    Since the obfuscation is a simple XOR cipher, the deobfuscation process
+    is identical to the obfuscation process.
 
     Args:
-        data: The data to deobfuscate.
+        data (bytes): The data to be deobfuscated.
 
     Returns:
-        The deobfuscated data.
+        bytes: The deobfuscated data.
     """
     # Deobfuskasi adalah operasi yang sama dengan XOR
     return obfuscate_memory(data)
 
 def detect_hardware_acceleration():
-    """Detects CPU features for hardware-accelerated cryptography."""
+    """Detects CPU features for hardware-accelerated cryptography.
+
+    This function checks for the presence of CPU features like AES-NI, AVX,
+    and PCLMULQDQ, which can significantly improve the performance of
+
+    cryptographic operations.
+    """
     try:
         info = safe_cpu_info()
         flags = info.get('flags', [])
@@ -1041,7 +1107,12 @@ def detect_hardware_acceleration():
         logger.warning(f"Tidak dapat mendeteksi fitur hardware: {e}")
 
 def safe_tune_argon2_params():
-    """Safe parameter tuning for resource-constrained environments"""
+    """Safely tunes Argon2 parameters for resource-constrained environments.
+
+    This function adjusts the Argon2 parameters based on the available system
+    memory and CPU cores, with a conservative approach for low-resource
+    devices like those running Termux on Android.
+    """
     try:
         if not config.get("auto_tune_performance", False):
             return
@@ -1065,10 +1136,16 @@ def safe_tune_argon2_params():
         logger.warning(f"Safe tuning failed, using defaults: {e}")
 
 class PerformanceTuner:
-    """Dynamically tunes performance parameters based on system resources."""
+    """A utility class for dynamically tuning performance parameters."""
+
     @staticmethod
     def tune_argon2_params():
-        """Adjusts Argon2 parameters based on available memory and CPU cores."""
+        """Adjusts Argon2 parameters based on available memory and CPU cores.
+
+        This method is part of the auto-tuning feature, which optimizes the
+        Argon2 key derivation function's parameters to match the system's
+        capabilities.
+        """
         if not config.get("auto_tune_performance", False):
             return
 
@@ -1115,7 +1192,14 @@ def _is_streaming_supported(algo):
     return algo == "aes-gcm" and CRYPTOGRAPHY_AVAILABLE
 
 class StreamEncryptor:
-    """Handles streaming encryption for AES-GCM."""
+    """Handles streaming encryption for large files using AES-GCM.
+
+    This class provides a way to encrypt large files chunk by chunk, avoiding
+    the need to load the entire file into memory.
+
+    Args:
+        key (bytes): The encryption key.
+    """
     def __init__(self, key):
         self.key = key
         self.nonce = secrets.token_bytes(config["gcm_nonce_len"])
@@ -1124,15 +1208,37 @@ class StreamEncryptor:
         self.tag = None
 
     def update(self, chunk):
+        """Encrypts a chunk of data.
+
+        Args:
+            chunk (bytes): The data chunk to encrypt.
+
+        Returns:
+            bytes: The encrypted chunk.
+        """
         return self.encryptor.update(chunk)
 
     def finalize(self):
+        """Finalizes the encryption process.
+
+        This method must be called after all data has been passed to `update`.
+        It computes the authentication tag.
+        """
         self.encryptor.finalize()
         self.tag = self.encryptor.tag
         return b""
 
 class StreamDecryptor:
-    """Handles streaming decryption for AES-GCM."""
+    """Handles streaming decryption for large files using AES-GCM.
+
+    This class provides a way to decrypt large files chunk by chunk, avoiding
+    the need to load the entire file into memory.
+
+    Args:
+        key (bytes): The decryption key.
+        nonce (bytes): The nonce used during encryption.
+        tag (bytes): The authentication tag.
+    """
     def __init__(self, key, nonce, tag):
         self.key = key
         self.nonce = nonce
@@ -1144,9 +1250,22 @@ class StreamDecryptor:
             raise RuntimeError("Cryptography required for streaming")
 
     def update(self, chunk):
+        """Decrypts a chunk of data.
+
+        Args:
+            chunk (bytes): The data chunk to decrypt.
+
+        Returns:
+            bytes: The decrypted chunk.
+        """
         return self.decryptor.update(chunk)
 
     def finalize(self):
+        """Finalizes the decryption process.
+
+        This method must be called after all data has been passed to `update`.
+        It verifies the authentication tag.
+        """
         try:
             self.decryptor.finalize()
             return b""
@@ -1155,15 +1274,40 @@ class StreamDecryptor:
             raise
 
 def constant_time_compare(val1, val2):
-    """Performs a constant-time comparison of two values."""
+    """Performs a constant-time comparison of two values.
+
+    This function is a wrapper around `secrets.compare_digest` and is used
+    to prevent timing attacks when comparing sensitive values like checksums
+    or authentication tags.
+
+    Args:
+        val1 (bytes): The first value to compare.
+        val2 (bytes): The second value to compare.
+
+    Returns:
+        bool: True if the values are equal, False otherwise.
+    """
     return secrets.compare_digest(val1, val2)
 
 def random_delay():
-    """Waits for a random time to mitigate timing attacks."""
+    """Waits for a random, short duration to mitigate timing attacks.
+
+    This function can be used to introduce random delays in cryptographic
+    operations, making it more difficult for an attacker to analyze the
+    timing of the operations.
+    """
     time.sleep(secrets.randbelow(10) / 1000.0)
 
 class SecureMemoryManager:
-    """Manages sensitive data in memory by encrypting it when not in use."""
+    """Manages sensitive data by encrypting it in memory.
+
+    This class provides a simple in-memory enclave for storing sensitive data,
+    such as keys, by encrypting it with a master key when not in use.
+
+    Args:
+        master_key (bytes): The master key used to encrypt and decrypt the
+            data stored in the manager.
+    """
 
     def __init__(self, master_key):
         self._master_key = master_key
@@ -1171,7 +1315,14 @@ class SecureMemoryManager:
         self._lock = threading.Lock()
 
     def _derive_key(self, key_id):
-        """Derives a unique key for a piece of data using HKDF."""
+        """Derives a unique key for a piece of data using HKDF.
+
+        Args:
+            key_id (str): A unique identifier for the data.
+
+        Returns:
+            bytes: The derived key.
+        """
         if not CRYPTOGRAPHY_AVAILABLE:
             raise RuntimeError("Cryptography module is required for SecureMemoryManager.")
 
@@ -1184,21 +1335,43 @@ class SecureMemoryManager:
         return hkdf.derive(self._master_key)
 
     def _encrypt(self, key, data):
-        """Encrypts data with AES-GCM."""
+        """Encrypts data with AES-GCM.
+
+        Args:
+            key (bytes): The encryption key.
+            data (bytes): The data to encrypt.
+
+        Returns:
+            bytes: The encrypted data, prefixed with the nonce.
+        """
         iv = secrets.token_bytes(12)
         cipher = AESGCM(key)
         encrypted_data = cipher.encrypt(iv, data, None)
         return iv + encrypted_data
 
     def _decrypt(self, key, encrypted_data):
-        """Decrypts data with AES-GCM."""
+        """Decrypts data with AES-GCM.
+
+        Args:
+            key (bytes): The decryption key.
+            encrypted_data (bytes): The encrypted data, prefixed with the
+                nonce.
+
+        Returns:
+            bytes: The decrypted data.
+        """
         iv = encrypted_data[:12]
         data = encrypted_data[12:]
         cipher = AESGCM(key)
         return cipher.decrypt(iv, data, None)
 
     def store_sensitive_data(self, key_id, data):
-        """Encrypts and stores sensitive data."""
+        """Encrypts and stores a piece of sensitive data.
+
+        Args:
+            key_id (str): A unique identifier for the data.
+            data (bytes): The sensitive data to be stored.
+        """
         with self._lock:
             derived_key = self._derive_key(key_id)
             encrypted_data = self._encrypt(derived_key, data)
@@ -1206,7 +1379,14 @@ class SecureMemoryManager:
             secure_overwrite_variable(derived_key)
 
     def retrieve_and_decrypt(self, key_id):
-        """Retrieves and decrypts sensitive data."""
+        """Retrieves and decrypts a piece of sensitive data.
+
+        Args:
+            key_id (str): The unique identifier for the data.
+
+        Returns:
+            bytes: The decrypted data, or None if the `key_id` is not found.
+        """
         with self._lock:
             if key_id not in self._enclave:
                 return None
@@ -1218,7 +1398,11 @@ class SecureMemoryManager:
             return decrypted_data
 
     def wipe_data(self, key_id):
-        """Securely wipes a piece of data from the manager."""
+        """Securely wipes a piece of data from the manager.
+
+        Args:
+            key_id (str): The unique identifier for the data to be wiped.
+        """
         with self._lock:
             if key_id in self._enclave:
                 secure_overwrite_variable(self._enclave[key_id])
@@ -1226,15 +1410,24 @@ class SecureMemoryManager:
                 gc.collect()
 
 class AlgorithmNegotiator:
-    """Selects the best available encryption algorithm."""
+    """Selects the best available encryption algorithm based on a priority list.
+
+    This class centralizes the logic for choosing a symmetric encryption
+    algorithm, ensuring that the most secure and performant option is used
+    based on the available libraries.
+    """
 
     @staticmethod
     def get_best_algorithm():
-        """
-        Selects the best available symmetric encryption algorithm based on a predefined priority list.
+        """Selects the best available symmetric encryption algorithm.
+
+        This method iterates through a predefined priority list and returns the
+        first algorithm for which the required cryptographic library is
+        available.
 
         Returns:
-            A string identifier for the selected algorithm, or None if no supported algorithms are available.
+            str: The name of the selected algorithm, or None if no supported
+                algorithms are available.
         """
         priority = config.get("preferred_algorithm_priority", [])
         for algo in priority:
@@ -1249,7 +1442,18 @@ class AlgorithmNegotiator:
         return None
 
 class HybridCipher:
-    """Manages hybrid encryption combining asymmetric and symmetric ciphers."""
+    """Manages hybrid encryption using a combination of asymmetric and
+    symmetric ciphers.
+
+    This class implements a hybrid encryption scheme that uses RSA and X25519
+    for key encapsulation and a negotiated symmetric cipher for bulk data
+    encryption.
+
+    Args:
+        password (str): The password used to protect the asymmetric keys.
+        keyfile_path (str, optional): The path to a keyfile for additional
+            entropy.
+    """
 
     def __init__(self, password, keyfile_path=None):
         self.password = password
@@ -1257,6 +1461,9 @@ class HybridCipher:
         self.rsa_private_key, self.x25519_private_key = self._load_or_generate_keys()
 
     def _load_or_generate_keys(self):
+        """Loads or generates the asymmetric keys required for hybrid
+        encryption.
+        """
         rsa_key, x25519_key = load_keys(self.password, self.keyfile_path)
         if rsa_key is None or x25519_key is None:
             print(f"{YELLOW}Kunci tidak ditemukan atau gagal dimuat. Membuat kunci baru...{RESET}")
@@ -1267,7 +1474,15 @@ class HybridCipher:
         return rsa_key, x25519_key
 
     def encrypt(self, input_path, output_path):
-        """Encrypts a file using a hybrid scheme."""
+        """Encrypts a file using the hybrid encryption scheme.
+
+        Args:
+            input_path (str): The path to the file to be encrypted.
+            output_path (str): The path to save the encrypted file to.
+
+        Returns:
+            bool: True if encryption is successful, False otherwise.
+        """
         # 1. Generate session key and wrap it with X25519 and RSA
         session_key = secrets.token_bytes(32)
 
@@ -1345,7 +1560,15 @@ class HybridCipher:
         return True
 
     def decrypt(self, input_path, output_path):
-        """Decrypts a file encrypted with the hybrid scheme."""
+        """Decrypts a file that was encrypted with the hybrid scheme.
+
+        Args:
+            input_path (str): The path to the file to be decrypted.
+            output_path (str): The path to save the decrypted file to.
+
+        Returns:
+            bool: True if decryption is successful, False otherwise.
+        """
         with open(input_path, 'rb') as f_in:
             metadata_len = int.from_bytes(f_in.read(4), 'big')
             metadata = json.loads(f_in.read(metadata_len).decode('utf-8'))
@@ -1403,7 +1626,18 @@ class HybridCipher:
 
 
 class KeyManager:
-    """Manages key versions, rotation, and keystore."""
+    """Manages master keys, including versioning, rotation, and secure storage.
+
+    This class handles the lifecycle of master keys, which are used to protect
+    file encryption keys. It stores the master keys in an encrypted keystore
+    file.
+
+    Args:
+        keystore_path (str): The path to the keystore file.
+        password (str): The password used to protect the keystore.
+        keyfile_path (str, optional): The path to a keyfile for additional
+            entropy.
+    """
 
     def __init__(self, keystore_path, password, keyfile_path=None):
         self.keystore_path = keystore_path
@@ -1413,10 +1647,17 @@ class KeyManager:
         self.keystore = self._load_or_initialize_keystore()
 
     def _derive_keystore_key(self, salt):
-        """
-        Derives the encryption key for the keystore using stable, non-tuned parameters.
-        This is critical to ensure the keystore can be opened across different runs
-        where auto-tuning might change the global KDF parameters.
+        """Derives the encryption key for the keystore.
+
+        This method uses stable, non-tuned Argon2 parameters to ensure that
+        the keystore can be consistently decrypted across different runs,
+        regardless of any auto-tuning that may have occurred.
+
+        Args:
+            salt (bytes): The salt to use for key derivation.
+
+        Returns:
+            bytes: The derived keystore encryption key, or None on failure.
         """
         if not ARGON2_AVAILABLE:
             raise RuntimeError("Argon2 is required for keystore operations.")
@@ -1449,7 +1690,9 @@ class KeyManager:
             return None
 
     def _load_or_initialize_keystore(self):
-        """Loads the keystore from file or creates a new one."""
+        """Loads the keystore from a file or creates a new one if it doesn't
+        exist.
+        """
         with self._lock:
             if os.path.exists(self.keystore_path):
                 try:
@@ -1490,7 +1733,7 @@ class KeyManager:
                 return self.keystore
 
     def _save_keystore(self):
-        """Encrypts and saves the keystore to file."""
+        """Encrypts and saves the current state of the keystore to a file."""
         with self._lock:
             try:
                 salt = secrets.token_bytes(16)
@@ -1514,7 +1757,14 @@ class KeyManager:
 
 
     def _generate_new_key(self, is_initial_key=False):
-        """Generates a new master key and adds it to the keystore."""
+        """Generates a new master key and adds it to the keystore.
+
+        Args:
+            is_initial_key (bool): If True, sets the new key's version to 1.
+
+        Returns:
+            int: The version number of the newly generated key.
+        """
         new_key_bytes = secrets.token_bytes(config.get("file_key_length", 32))
         new_key_b64 = base64.b64encode(new_key_bytes).decode('utf-8')
 
@@ -1544,7 +1794,11 @@ class KeyManager:
         return new_version
 
     def rotate_key(self):
-        """Rotates the master key, generating a new one and deactivating the old one."""
+        """Rotates the master key.
+
+        This method generates a new master key, sets it as the active key,
+        and deactivates the previous one.
+        """
         print(f"{CYAN}Memulai rotasi kunci master...{RESET}")
         active_version = self.get_active_key_version()
         new_version = self._generate_new_key()
@@ -1553,7 +1807,11 @@ class KeyManager:
 
 
     def get_active_key(self):
-        """Returns the active master key bytes."""
+        """Retrieves the currently active master key.
+
+        Returns:
+            bytes: The active master key.
+        """
         active_version = str(self.keystore["active_key_version"])
         key_info = self.keystore["keys"].get(active_version)
         if not key_info or key_info["status"] != "active":
@@ -1561,18 +1819,27 @@ class KeyManager:
         return base64.b64decode(key_info["key"])
 
     def get_key_by_version(self, version):
-        """Returns a specific master key bytes by its version."""
+        """Retrieves a master key by its version number.
+
+        Args:
+            version (int): The version of the key to retrieve.
+
+        Returns:
+            bytes: The requested master key.
+        """
         key_info = self.keystore["keys"].get(str(version))
         if not key_info:
             raise ValueError(f"Kunci versi {version} tidak ditemukan di keystore.")
         return base64.b64decode(key_info["key"])
 
     def get_active_key_version(self):
-        """Returns the active master key version."""
+        """Returns the version number of the currently active master key."""
         return self.keystore["active_key_version"]
 
     def check_rotation_policy(self):
-        """Checks if the active key has expired and needs rotation."""
+        """Checks if the active key needs to be rotated based on the defined
+        policy.
+        """
         policy = self.keystore.get("key_rotation_policy", {})
         if not policy.get("enabled", False):
             return
@@ -1592,15 +1859,16 @@ class KeyManager:
 
 # --- Fungsi Derivasi Kunci Baru (V14 - Parameter KDF Ditingkatkan) ---
 def derive_key_from_password_and_keyfile_pbkdf2(password: str, salt: bytes, keyfile_path: str = None) -> bytes:
-    """Derives a key from a password and keyfile using PBKDF2.
+    """Derives an encryption key using PBKDF2.
 
     Args:
-        password: The password to use for key derivation.
-        salt: The salt to use for key derivation.
-        keyfile_path: The path to the keyfile to use for key derivation.
+        password (str): The password to use for key derivation.
+        salt (bytes): The salt to use for key derivation.
+        keyfile_path (str, optional): The path to a keyfile for additional
+            entropy.
 
     Returns:
-        The derived key, or None if an error occurs.
+        bytes: The derived key, or None if an error occurs.
     """
     if not CRYPTOGRAPHY_AVAILABLE:
         print(f"{RED}❌ Error: PBKDF2 memerlukan modul 'cryptography'.{RESET}")
@@ -1642,15 +1910,16 @@ def derive_key_from_password_and_keyfile_pbkdf2(password: str, salt: bytes, keyf
         return None
 
 def derive_key_from_password_and_keyfile_scrypt(password: str, salt: bytes, keyfile_path: str = None) -> bytes:
-    """Derives a key from a password and keyfile using scrypt.
+    """Derives an encryption key using scrypt.
 
     Args:
-        password: The password to use for key derivation.
-        salt: The salt to use for key derivation.
-        keyfile_path: The path to the keyfile to use for key derivation.
+        password (str): The password to use for key derivation.
+        salt (bytes): The salt to use for key derivation.
+        keyfile_path (str, optional): The path to a keyfile for additional
+            entropy.
 
     Returns:
-        The derived key, or None if an error occurs.
+        bytes: The derived key, or None if an error occurs.
     """
     if not CRYPTOGRAPHY_AVAILABLE:
         print(f"{RED}❌ Error: Scrypt memerlukan modul 'cryptography'.{RESET}")
@@ -1685,15 +1954,16 @@ def derive_key_from_password_and_keyfile_scrypt(password: str, salt: bytes, keyf
         return None
 
 def derive_key_from_password_and_keyfile_argon2(password: str, salt: bytes, keyfile_path: str = None) -> bytes:
-    """Derives a key from a password and keyfile using Argon2.
+    """Derives an encryption key using Argon2.
 
     Args:
-        password: The password to use for key derivation.
-        salt: The salt to use for key derivation.
-        keyfile_path: The path to the keyfile to use for key derivation.
+        password (str): The password to use for key derivation.
+        salt (bytes): The salt to use for key derivation.
+        keyfile_path (str, optional): The path to a keyfile for additional
+            entropy.
 
     Returns:
-        The derived key, or None if an error occurs.
+        bytes: The derived key, or None if an error occurs.
     """
     # Kita tetap gunakan argon2.low_level karena lebih stabil dan tidak memerlukan cryptography untuk Argon2 sendiri
     if not ARGON2_AVAILABLE:
@@ -1730,18 +2000,20 @@ def derive_key_from_password_and_keyfile_argon2(password: str, salt: bytes, keyf
         return None
 
 def derive_key_from_password_and_keyfile(password: str, salt: bytes, keyfile_path: str = None) -> bytes:
-    """Derives a key from a password and keyfile.
+    """Derives an encryption key using the configured KDF.
 
-    This function selects the key derivation function (KDF) based on the
-    configuration and library availability.
+    This function acts as a dispatcher, calling the appropriate key derivation
+    function (PBKDF2, scrypt, or Argon2) based on the application's
+    configuration.
 
     Args:
-        password: The password to use for key derivation.
-        salt: The salt to use for key derivation.
-        keyfile_path: The path to the keyfile to use for key derivation.
+        password (str): The password to use for key derivation.
+        salt (bytes): The salt to use for key derivation.
+        keyfile_path (str, optional): The path to a keyfile for additional
+            entropy.
 
     Returns:
-        The derived key, or None if an error occurs.
+        bytes: The derived key, or None if an error occurs.
     """
     kdf_type = config.get("kdf_type", "argon2id").lower()
 
@@ -1772,14 +2044,18 @@ def derive_key_from_password_and_keyfile(password: str, salt: bytes, keyfile_pat
 
 # --- Fungsi Derivasi Kunci File dengan HKDF (menggunakan cryptography jika tersedia) ---
 def derive_file_key_from_master_key(master_key: bytes, input_file_path: str) -> bytes:
-    """Derives a file key from the master key using HKDF.
+    """Derives a unique file encryption key from a master key using HKDF.
+
+    This function uses the master key and the input file path to generate a
+    deterministic, unique key for each file.
 
     Args:
-        master_key: The master key to use for key derivation.
-        input_file_path: The path to the input file.
+        master_key (bytes): The master key.
+        input_file_path (str): The path to the input file, used to generate a
+            unique salt and info for the HKDF.
 
     Returns:
-        The derived file key.
+        bytes: The derived file encryption key.
     """
     if not CRYPTOGRAPHY_AVAILABLE:
         print(f"{RED}❌ Error: HKDF memerlukan modul 'cryptography'.{RESET}")
@@ -1851,7 +2127,20 @@ def derive_hmac_key_from_master_key(master_key: bytes, input_file_path: str) -> 
 # Disimpan untuk referensi atau kompatibilitas mundur jika diperlukan di masa depan.
 
 def generate_and_save_keys(password: str, keyfile_path: str = None):
-    """Generates and saves RSA and X25519 key pairs."""
+    """Generates and saves new RSA and X25519 key pairs.
+
+    The generated private keys are encrypted with a key derived from the
+    provided password and optional keyfile before being saved to disk.
+
+    Args:
+        password (str): The password to use for encrypting the private keys.
+        keyfile_path (str, optional): The path to a keyfile for additional
+            entropy.
+
+    Returns:
+        tuple: A tuple containing the generated RSA and X25519 private key
+            objects, or (None, None) if an error occurs.
+    """
     try:
         # Generate RSA keys
         rsa_private_key = rsa.generate_private_key(
@@ -1898,7 +2187,18 @@ def generate_and_save_keys(password: str, keyfile_path: str = None):
         return None, None
 
 def load_keys(password: str, keyfile_path: str = None):
-    """Loads RSA and X25519 private keys from files."""
+    """Loads and decrypts RSA and X25519 private keys from files.
+
+    Args:
+        password (str): The password to use for decrypting the private keys.
+        keyfile_path (str, optional): The path to a keyfile for additional
+            entropy.
+
+    Returns:
+        tuple: A tuple containing the loaded RSA and X25519 private key
+            objects, or (None, None) if the keys cannot be loaded or
+            decrypted.
+    """
     try:
         # Load and decrypt RSA private key
         with open(config["rsa_private_key_file"], "rb") as f:
@@ -1939,13 +2239,13 @@ def load_keys(password: str, keyfile_path: str = None):
 
 # --- Fungsi Utilitas Kompresi ---
 def compress_data(data) -> bytes:
-    """Compresses data using zlib.
+    """Compresses data using the zlib library.
 
     Args:
-        data (bytes): The data to compress.
+        data (bytes): The data to be compressed.
 
     Returns:
-        bytes: The compressed data.
+        bytes: The compressed data, or the original data if compression fails.
     """
     compression_level = config.get("compression_level", 6)
     try:
@@ -1958,13 +2258,14 @@ def compress_data(data) -> bytes:
         return data
 
 def decompress_data(data) -> bytes:
-    """Decompresses data using zlib.
+    """Decompresses data using the zlib library.
 
     Args:
-        data (bytes): The data to decompress.
+        data (bytes): The data to be decompressed.
 
     Returns:
-        bytes: The decompressed data.
+        bytes: The decompressed data, or the original data if decompression
+            fails (e.g., if the data was not compressed).
     """
     try:
         decompressed_data = zlib.decompress(data)
@@ -2684,7 +2985,21 @@ def decrypt_file_simple(input_path: str, output_path: str, password: str, keyfil
         return False, None
 
 def apply_rsa_layer(input_path: str, output_path: str, password: str, keyfile_path: str) -> bool:
-    """Applies a hybrid RSA encryption layer to a file."""
+    """Applies an additional layer of RSA encryption to a file.
+
+    This function encrypts a file using a hybrid scheme where a random session
+    key is encrypted with an RSA public key, and the file content is encrypted
+    with the session key using AES-GCM.
+
+    Args:
+        input_path (str): The path to the file to be encrypted.
+        output_path (str): The path to save the encrypted file to.
+        password (str): The password used to protect the RSA private key.
+        keyfile_path (str): The path to a keyfile for additional entropy.
+
+    Returns:
+        bool: True if the RSA layer is applied successfully, False otherwise.
+    """
     try:
         rsa_private_key, _ = load_keys(password, keyfile_path)
         if rsa_private_key is None:
@@ -2725,7 +3040,21 @@ def apply_rsa_layer(input_path: str, output_path: str, password: str, keyfile_pa
         return False
 
 def remove_rsa_layer(input_path: str, output_path: str, password: str, keyfile_path: str) -> bool:
-    """Removes a hybrid RSA encryption layer from a file."""
+    """Removes a layer of RSA encryption from a file.
+
+    This function decrypts a file that was encrypted with `apply_rsa_layer`.
+    It uses the RSA private key to decrypt the session key and then uses the
+    session key to decrypt the file content.
+
+    Args:
+        input_path (str): The path to the file to be decrypted.
+        output_path (str): The path to save the decrypted file to.
+        password (str): The password used to protect the RSA private key.
+        keyfile_path (str): The path to a keyfile for additional entropy.
+
+    Returns:
+        bool: True if the RSA layer is removed successfully, False otherwise.
+    """
     try:
         rsa_private_key, _ = load_keys(password, keyfile_path)
         if rsa_private_key is None:
@@ -2762,7 +3091,23 @@ def remove_rsa_layer(input_path: str, output_path: str, password: str, keyfile_p
         return False
 
 def apply_curve25519_layer(input_path: str, output_path: str, password: str, keyfile_path: str) -> bool:
-    """Applies a hybrid Curve25519 encryption layer to a file."""
+    """Applies an additional layer of Curve25519 encryption to a file.
+
+    This function uses Elliptic Curve Diffie-Hellman (ECDH) with Curve25519
+    to establish a shared secret, which is then used to derive a session key
+    for encrypting the file content with AES-GCM.
+
+    Args:
+        input_path (str): The path to the file to be encrypted.
+        output_path (str): The path to save the encrypted file to.
+        password (str): The password used to protect the Curve25519 private
+            key.
+        keyfile_path (str): The path to a keyfile for additional entropy.
+
+    Returns:
+        bool: True if the Curve25519 layer is applied successfully, False
+            otherwise.
+    """
     try:
         _, x25519_private_key = load_keys(password, keyfile_path)
         if x25519_private_key is None:
@@ -2807,7 +3152,23 @@ def apply_curve25519_layer(input_path: str, output_path: str, password: str, key
         return False
 
 def remove_curve25519_layer(input_path: str, output_path: str, password: str, keyfile_path: str) -> bool:
-    """Removes a hybrid Curve25519 encryption layer from a file."""
+    """Removes a layer of Curve25519 encryption from a file.
+
+    This function decrypts a file that was encrypted with
+    `apply_curve25519_layer`. It uses the Curve25519 private key to
+    re-create the shared secret and decrypt the file content.
+
+    Args:
+        input_path (str): The path to the file to be decrypted.
+        output_path (str): The path to save the decrypted file to.
+        password (str): The password used to protect the Curve25519 private
+            key.
+        keyfile_path (str): The path to a keyfile for additional entropy.
+
+    Returns:
+        bool: True if the Curve25519 layer is removed successfully, False
+            otherwise.
+    """
     try:
         _, x25519_private_key = load_keys(password, keyfile_path)
         if x25519_private_key is None:
@@ -3620,7 +3981,20 @@ def decrypt_file_with_master_key(input_path: str, output_path: str, key_manager:
 
 
 def encrypt_file_hybrid(input_path: str, output_path: str, password: str, keyfile_path: str = None, hide_paths: bool = False):
-    """Encrypts a file using the HybridCipher class."""
+    """Encrypts a file using the hybrid encryption scheme.
+
+    This function is a wrapper around the `HybridCipher` class, providing a
+    simple interface for hybrid encryption.
+
+    Args:
+        input_path (str): The path to the file to be encrypted.
+        output_path (str): The path to save the encrypted file to.
+        password (str): The password used to protect the asymmetric keys.
+        keyfile_path (str, optional): The path to a keyfile for additional
+            entropy.
+        hide_paths (bool): If True, suppresses the display of file paths in
+            console output.
+    """
     try:
         cipher = HybridCipher(password, keyfile_path)
         return cipher.encrypt(input_path, output_path)
@@ -3630,7 +4004,20 @@ def encrypt_file_hybrid(input_path: str, output_path: str, password: str, keyfil
         return False
 
 def decrypt_file_hybrid(input_path: str, output_path: str, password: str, keyfile_path: str = None, hide_paths: bool = False):
-    """Decrypts a file using the HybridCipher class."""
+    """Decrypts a file using the hybrid encryption scheme.
+
+    This function is a wrapper around the `HybridCipher` class, providing a
+    simple interface for hybrid decryption.
+
+    Args:
+        input_path (str): The path to the file to be decrypted.
+        output_path (str): The path to save the decrypted file to.
+        password (str): The password used to protect the asymmetric keys.
+        keyfile_path (str, optional): The path to a keyfile for additional
+            entropy.
+        hide_paths (bool): If True, suppresses the display of file paths in
+            console output.
+    """
     try:
         cipher = HybridCipher(password, keyfile_path)
         return cipher.decrypt(input_path, output_path)
@@ -3641,12 +4028,16 @@ def decrypt_file_hybrid(input_path: str, output_path: str, password: str, keyfil
 
 # --- Fungsi UI ---
 def print_box(title, options=None, width=80):
-    """Prints a box with a title and options.
+    """Prints a formatted box with a title and optional list of options.
+
+    This function is used to create a consistent and visually appealing
+    user interface in the console.
 
     Args:
-        title: The title to display in the box.
-        options: A list of options to display in the box.
-        width: The width of the box.
+        title (str): The title to be displayed at the top of the box.
+        options (list, optional): A list of strings, where each string is an
+            option to be displayed in the box.
+        width (int): The total width of the box.
     """
     border_color = CYAN
     title_color = WHITE
@@ -3721,7 +4112,12 @@ def process_batch_file(args):
     return False, None
 
 def interactive_encrypt():
-    """Handles the interactive encryption process."""
+    """Guides the user through the file encryption process in interactive
+    mode.
+
+    This function prompts the user for all necessary information, such as
+    input and output file paths, password, and optional security layers.
+    """
     try:
         # Get user inputs
         input_path = input(f"{BOLD}Masukkan path file input untuk enkripsi: {RESET}").strip()
@@ -3857,7 +4253,15 @@ def interactive_encrypt():
         pass
 
 def read_metadata(input_path: str) -> (list, int):
-    """Reads the metadata header from the input file."""
+    """Reads the layered encryption metadata from a file.
+
+    Args:
+        input_path (str): The path to the encrypted file.
+
+    Returns:
+        tuple: A tuple containing a list of the encryption layers and the size
+            of the metadata header.
+    """
     try:
         with open(input_path, "rb") as f:
             metadata_len_bytes = f.read(2)
@@ -3875,7 +4279,13 @@ def read_metadata(input_path: str) -> (list, int):
         return [], 0
 
 def interactive_decrypt():
-    """Handles the interactive decryption process."""
+    """Guides the user through the file decryption process in interactive
+    mode.
+
+    This function prompts the user for all necessary information, such as
+    input and output file paths and the password. It automatically detects
+    the encryption layers used and decrypts the file accordingly.
+    """
     try:
         input_path = input(f"{BOLD}Masukkan path file input untuk dekripsi: {RESET}").strip()
 
@@ -3971,7 +4381,12 @@ def interactive_decrypt():
         pass
 
 def interactive_mode():
-    """The main interactive mode function."""
+    """Starts the application in interactive mode.
+
+    This function displays a menu-driven interface that allows the user to
+    choose between encrypting a file, decrypting a file, or exiting the
+    program.
+    """
     if not CRYPTOGRAPHY_AVAILABLE:
         print_error_box("Mode interaktif memerlukan modul 'cryptography'. Silakan instal.")
         sys.exit(1)
@@ -4008,16 +4423,21 @@ def interactive_mode():
 
 
 def batch_process(directory: str, mode: str, password: str, keyfile_path: str = None, add_padding: bool = True, hide_paths: bool = False, parallel: bool = False):
-    """Processes all files in a directory in batch mode.
+    """Encrypts or decrypts all files in a directory.
+
+    This function can operate recursively and in parallel, based on the
+    application's configuration.
 
     Args:
-        directory: The directory to process.
-        mode: The mode to use for processing ('encrypt' or 'decrypt').
-        password: The password to use for processing.
-        keyfile_path: The path to the keyfile to use for processing.
-        add_padding: Whether to add random padding to the files.
-        hide_paths: Whether to hide the file paths in the output.
-        parallel: Whether to process the files in parallel.
+        directory (str): The path to the directory to be processed.
+        mode (str): The operation to perform ('encrypt' or 'decrypt').
+        password (str): The password to use for the operation.
+        keyfile_path (str, optional): The path to a keyfile.
+        add_padding (bool): Whether to add random padding during encryption.
+        hide_paths (bool): If True, suppresses the display of file paths in
+            console output.
+        parallel (bool): If True, processes files in parallel using a thread
+            pool.
     """
     if not os.path.isdir(directory):
         print_error_box(f"Error: Direktori '{directory}' tidak ditemukan.")
@@ -4085,7 +4505,12 @@ def batch_process(directory: str, mode: str, password: str, keyfile_path: str = 
 
 # --- Fungsi Utama ---
 def main():
-    """The main function of the application."""
+    """The main entry point of the application.
+
+    This function handles command-line argument parsing, sets up the
+    application's configuration and hardening features, and dispatches to the
+    appropriate function based on the user's input.
+    """
     # --- Startup Checks ---
     detect_hardware_acceleration()
     safe_tune_argon2_params()
