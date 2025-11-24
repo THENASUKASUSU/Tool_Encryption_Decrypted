@@ -8,7 +8,23 @@ import json
 from Thena_dev_v19 import config
 
 def run_thena_script(inputs, get_output_filename=False, config_file=None):
-    """Runs the Thena script with the given inputs."""
+    """Runs the Thena script in a subprocess with a given set of inputs.
+
+    This function is a test helper that automates the process of running the
+    main script and providing it with user input via stdin.
+
+    Args:
+        inputs (list): A list of strings, where each string is a line of
+            input to be passed to the script.
+        get_output_filename (bool): If True, the function will attempt to
+            parse the script's stdout to find the name of the output file.
+        config_file (str, optional): The path to a configuration file to be
+            used for the script run.
+
+    Returns:
+        tuple: A tuple containing the script's stdout, stderr, execution time,
+            and the output filename (if requested).
+    """
     # Ensure the script exits gracefully in interactive tests
     if "3" not in inputs: # Assuming '3' is the exit command
         inputs.append("3")
@@ -49,8 +65,13 @@ def run_thena_script(inputs, get_output_filename=False, config_file=None):
     return stdout, stderr, end_time - start_time, output_filename
 
 class TestThenaScript(unittest.TestCase):
+    """A test suite for the main Thena script."""
     def setUp(self):
-        """Set up for the tests."""
+        """Sets up the test environment before each test.
+
+        This method creates a dictionary to hold configuration files and calls
+        the cleanup method to ensure a clean slate for each test.
+        """
         self.configs = {}
         self.cleanup()
 
@@ -376,16 +397,17 @@ class TestThenaScript(unittest.TestCase):
             raise e
 
 class TestSecureMemoryFeatures(unittest.TestCase):
+    """A test suite for the secure memory handling features."""
     def setUp(self):
-        """Set up for the tests."""
+        """Sets up the test environment for secure memory tests."""
         self.cleanup()
 
     def tearDown(self):
-        """Tear down after the tests."""
+        """Tears down the test environment after secure memory tests."""
         self.cleanup()
 
     def cleanup(self):
-        """Remove all test-related files."""
+        """Removes all test-related files."""
         files_to_remove = [
             "test_file.txt",
             "test_input.txt",
@@ -396,7 +418,11 @@ class TestSecureMemoryFeatures(unittest.TestCase):
                 os.remove(f)
 
     def test_secure_memory_manager(self):
-        """Tests the SecureMemoryManager class."""
+        """Tests the core functionality of the SecureMemoryManager class.
+
+        This test verifies that data can be securely stored, retrieved, and
+        wiped from the manager.
+        """
         from Thena_dev_v19 import SecureMemoryManager, secure_overwrite_variable
         master_key = os.urandom(32)
         manager = SecureMemoryManager(master_key)
@@ -415,7 +441,12 @@ class TestSecureMemoryFeatures(unittest.TestCase):
         secure_overwrite_variable(master_key)
 
     def test_constant_time_compare(self):
-        """Tests the constant_time_compare function."""
+        """Tests the constant-time comparison function.
+
+        This test ensures that the `constant_time_compare` function correctly
+        compares byte strings and is suitable for use with cryptographic
+        values.
+        """
         import secrets
         self.assertTrue(secrets.compare_digest(b"abc", b"abc"))
         self.assertFalse(secrets.compare_digest(b"abc", b"abd"))
@@ -423,8 +454,14 @@ class TestSecureMemoryFeatures(unittest.TestCase):
         self.assertFalse(secrets.compare_digest(b"abcd", b"abc"))
 
 class TestPerformanceFeatures(unittest.TestCase):
+    """A test suite for the performance-related features."""
     def setUp(self):
-        """Set up for performance tests."""
+        """Sets up the test environment for performance tests.
+
+        This method creates a large file to be used for testing streaming
+        encryption and decryption, and a configuration file to enable
+        performance-related features.
+        """
         self.config_file = "thena_config_performance.json"
         self.large_file = "large_test_file.txt"
         self.encrypted_file = "large_test_file.encrypted"
@@ -443,7 +480,7 @@ class TestPerformanceFeatures(unittest.TestCase):
             }, f)
 
     def tearDown(self):
-        """Clean up after performance tests."""
+        """Cleans up the test environment after performance tests."""
         files_to_remove = [
             self.large_file,
             self.encrypted_file,
@@ -495,7 +532,8 @@ class TestPerformanceFeatures(unittest.TestCase):
             self.assertEqual(original_hash, decrypted_hash, "Decrypted file content does not match original.")
 
     def test_hardware_acceleration_detection_output(self):
-        """Tests that hardware acceleration detection prints the expected output."""
+        """Tests that the hardware acceleration detection message is displayed.
+        """
         # We just need to run the script and check the output, no encryption needed.
         command = ["python3", "Thena_dev_v19.py", "--help"] # A simple command to run the script
         process = subprocess.run(command, text=True, capture_output=True)
@@ -508,7 +546,8 @@ class TestPerformanceFeatures(unittest.TestCase):
         )
 
     def test_adaptive_performance_tuning_output(self):
-        """Tests that adaptive performance tuning prints the expected output."""
+        """Tests that the adaptive performance tuning messages are displayed.
+        """
         command = [
             "python3", "Thena_dev_v19.py",
             "--help", # A simple command to run the script and trigger startup logic

@@ -9,7 +9,8 @@ At its core, Thena_dev employs robust encryption algorithms like AES-256-GCM and
 ## Features
 
 - **Multiple KDFs**: Choose between Argon2id, scrypt, and PBKDF2 for deriving keys from passwords.
-- **Strong Encryption**: Implements AES-GCM and ChaCha20-Poly1305 for authenticated encryption, protecting against tampering.
+- **Strong Encryption**: Implements AES-GCM, ChaCha20-Poly1305, XChaCha20-Poly1305, and AES-SIV for authenticated encryption.
+- **Hybrid Encryption**: Supports a hybrid encryption scheme using RSA and Curve25519 for an additional layer of security.
 - **Master Key System**: Supports the use of a master key for an additional layer of security.
 - **Interactive and CLI Modes**: An easy-to-use interactive menu for beginners and a full-featured command-line interface for scripting and automation.
 - **Secure File Wiping**: A utility to securely overwrite and delete original files after encryption or decryption.
@@ -24,6 +25,8 @@ At its core, Thena_dev employs robust encryption algorithms like AES-256-GCM and
 - `cryptography`
 - `pycryptodome`
 - `argon2-cffi`
+- `miscreant`
+- `pynacl`
 
 ## Installation
 
@@ -35,7 +38,7 @@ At its core, Thena_dev employs robust encryption algorithms like AES-256-GCM and
 
 2.  **Install the required dependencies:**
     ```bash
-    pip install cryptography pycryptodome argon2-cffi
+    pip install cryptography pycryptodome argon2-cffi miscreant pynacl
     ```
 
 ## Configuration
@@ -45,7 +48,7 @@ The tool uses a `thena_config_v18.json` file to manage its settings. If this fil
 Key configuration options include:
 
 -   `kdf_type`: The Key Derivation Function to use (`argon2id`, `scrypt`, or `pbkdf2`).
--   `encryption_algorithm`: The encryption algorithm to use (`aes-gcm` or `chacha20-poly1305`).
+-   `preferred_algorithm_priority`: A list of symmetric encryption algorithms to be used, in order of preference.
 -   `argon2_time_cost`, `argon2_memory_cost`, `argon2_parallelism`: Parameters for the Argon2id KDF.
 -   `enable_compression`: Set to `true` to enable zlib compression before encryption.
 -   `log_level`: The logging level (`INFO`, `DEBUG`, `WARNING`, `ERROR`).
@@ -57,7 +60,7 @@ Key configuration options include:
 To start the tool in interactive mode, run the script without any arguments:
 
 ```bash
-python3 Thena_dev_v18.py
+python3 Thena_dev_v19.py
 ```
 
 You will be guided through a menu to select an operation (encrypt or decrypt) and provide the necessary inputs.
@@ -67,13 +70,13 @@ You will be guided through a menu to select an operation (encrypt or decrypt) an
 #### Simple Encryption
 
 ```bash
-python3 Thena_dev_v18.py --encrypt -i <input_file> -o <output_file> -p <password>
+python3 Thena_dev_v19.py --encrypt -i <input_file> -o <output_file> -p <password>
 ```
 
 #### Simple Decryption
 
 ```bash
-python3 Thena_dev_v18.py --decrypt -i <input_file> -o <output_file> -p <password>
+python3 Thena_dev_v19.py --decrypt -i <input_file> -o <output_file> -p <password>
 ```
 
 #### Encryption with a Keyfile
@@ -81,13 +84,13 @@ python3 Thena_dev_v18.py --decrypt -i <input_file> -o <output_file> -p <password
 For enhanced security, you can use a keyfile in addition to a password.
 
 ```bash
-python3 Thena_dev_v18.py --encrypt -i <input_file> -o <output_file> -p <password> -k <keyfile_path>
+python3 Thena_dev_v19.py --encrypt -i <input_file> -o <output_file> -p <password> -k <keyfile_path>
 ```
 
 #### Decryption with a Keyfile
 
 ```bash
-python3 Thena_dev_v18.py --decrypt -i <input_file> -o <output_file> -p <password> -k <keyfile_path>
+python3 Thena_dev_v19.py --decrypt -i <input_file> -o <output_file> -p <password> -k <keyfile_path>
 ```
 
 #### Batch Processing
@@ -95,13 +98,13 @@ python3 Thena_dev_v18.py --decrypt -i <input_file> -o <output_file> -p <password
 To encrypt all files in a directory:
 
 ```bash
-python3 Thena_dev_v18.py --batch --encrypt --dir <directory_path> -p <password>
+python3 Thena_dev_v19.py --batch --encrypt --dir <directory_path> -p <password>
 ```
 
 To decrypt all `.encrypted` files in a directory:
 
 ```bash
-python3 Thena_dev_v18.py --batch --decrypt --dir <directory_path> -p <password>
+python3 Thena_dev_v19.py --batch --decrypt --dir <directory_path> -p <password>
 ```
 
 ### All CLI Arguments
