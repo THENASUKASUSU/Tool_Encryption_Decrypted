@@ -110,8 +110,7 @@ import ctypes.util # Impor ctypes.util untuk secure memory (V10/V11/V12/V13/V14)
 import signal # Impor signal untuk anti-debug (V10/V11/V12/V13/V14)
 import mmap # Impor mmap untuk performa/file besar (V12/V13/V14)
 import struct # Impor struct untuk header dinamis (V12/V13/V14)
-import secrets
-import time
+import shutil
 import psutil
 try:
     import cpuinfo
@@ -432,22 +431,26 @@ def secure_overwrite_variable(var):
     Args:
         var: The variable to overwrite.
     """
-    # Hanya bytearray dan bytes yang bisa ditimpa secara langsung di memori menggunakan ctypes
-    if isinstance(var, bytearray):
-        addr = ctypes.addressof((ctypes.c_char * len(var)).from_buffer(var))
-        secure_memset(addr, len(var), 0) # Timpa dengan nol
-        # Kosongkan referensi di Python
-        var[:] = b'\x00' * len(var)
-    elif isinstance(var, bytes):
-        # Untuk bytes, kita hanya bisa mengganti referensi lokal ke array nol
-        # Buffer asli tidak bisa ditimpa langsung
-        var = b'\x00' * len(var)
-    elif isinstance(var, str):
-        # Untuk string, kita hanya bisa mengganti referensi lokal ke string kosong
-        # Buffer asli tidak bisa ditimpa langsung
-        var = ""
-    # Tambahkan tipe lain jika perlu
-    gc.collect() # Paksa garbage collection
+    try:
+        if isinstance(var, bytearray):
+            # Bytearray is mutable, so we can overwrite it in place.
+            length = len(var)
+            addr = ctypes.addressof((ctypes.c_char * length).from_buffer(var))
+            secure_memset(addr, length, 0)
+            var[:] = b'\x00' * length
+            logger.debug(f"Successfully overwrote a bytearray of length {length}.")
+        elif isinstance(var, (bytes, str)):
+            # Bytes and str are immutable. The best we can do is suggest not holding them long.
+            logger.warning(f"Attempted to wipe an immutable {type(var).__name__}. This is not reliably possible in Python. Avoid storing sensitive data in immutable types for long periods.")
+        else:
+            logger.warning(f"Unsupported type for secure overwrite: {type(var).__name__}")
+    except Exception as e:
+        logger.error(f"Error during secure_overwrite_variable: {e}")
+    finally:
+        # Attempt to trigger garbage collection. Note that reassignment (`var = None`)
+        # within this function only affects the local scope and does not guarantee
+        # cleanup in the caller's scope.
+        gc.collect()
 
 def shuffle_file_parts(parts_list):
     """Shuffles the order of the file parts.
@@ -853,8 +856,7 @@ def check_disk_space(file_path: str, output_dir: str) -> bool:
              # Faktor kompresi rata-rata ~50% untuk data acak bisa lebih buruk, jadi gunakan 1.1x untuk keamanan
              estimated_output_size = int(estimated_output_size * 1.1)
 
-        statvfs_result = os.statvfs(output_dir)
-        free_space = statvfs_result.f_frsize * statvfs_result.f_bavail
+        total, used, free_space = shutil.disk_usage(output_dir)
 
         if free_space < estimated_output_size:
             required_mb = estimated_output_size / (1024*1024)
@@ -1808,44 +1810,6 @@ def derive_file_key_from_master_key(master_key: bytes, input_file_path: str) -> 
         # Fallback ke acak jika HKDF gagal
         return secrets.token_bytes(config["file_key_length"])
 
-# --- Fungsi Derivasi Kunci HMAC dari Master Key (V8 - Fixed HMAC Derivation - V14: Konsisten & Lebih Aman) ---
-def derive_hmac_key_from_master_key(master_key: bytes, input_file_path: str) -> bytes:
-    """Derives an HMAC key from the master key using HKDF.
-
-    Args:
-        master_key: The master key to use for key derivation.
-        input_file_path: The path to the input file.
-
-    Returns:
-        The derived HMAC key.
-    """
-    if not CRYPTOGRAPHY_AVAILABLE:
-        print(f"{RED}❌ Error: HKDF (untuk HMAC) memerlukan modul 'cryptography'.{RESET}")
-        logger.error("HKDF (untuk HMAC) memerlukan modul 'cryptography', yang tidak tersedia.")
-        return secrets.token_bytes(config["hmac_key_length"]) # Fallback ke acak jika tidak tersedia
-
-    # Buat salt unik berdasarkan path file input (V14)
-    file_path_hash = hashlib.sha256(input_file_path.encode()).digest()[:16]
-
-    # Ambil string dari konfigurasi dan konversi ke bytes
-    info_prefix_str = config.get("hmac_derivation_info", "thena_hmac_key_")
-    info_bytes = info_prefix_str.encode('utf-8') + file_path_hash # Gabungkan prefix dan hash path (V14)
-
-    try:
-        hkdf = HKDF(
-            algorithm=hashes.SHA256(),
-            length=config["hmac_key_length"],
-            salt=file_path_hash, # Gunakan hash path sebagai salt (V14: Lebih unik)
-            info=info_bytes, # Gunakan bytes yang dikonversi
-        )
-        hmac_key = hkdf.derive(master_key)
-        logger.debug(f"Kunci HMAC diturunkan dari Master Key menggunakan HKDF (cryptography) (Info: {info_prefix_str} + hash path), Panjang: {len(hmac_key)} bytes")
-        return hmac_key
-    except Exception as e:
-        logger.error(f"Kesalahan saat derivasi kunci HMAC dengan HKDF (cryptography): {e}")
-        # Fallback ke acak jika HKDF gagal
-        return secrets.token_bytes(config["hmac_key_length"])
-
 # --- Fungsi Master Key Management (DEPRECATED) ---
 # Fungsi load_or_create_master_key sekarang sudah usang dan digantikan oleh KeyManager.
 # Disimpan untuk referensi atau kompatibilitas mundur jika diperlukan di masa depan.
@@ -2055,207 +2019,57 @@ def encrypt_file_simple(input_path: str, output_path: str, password: str, keyfil
             logger.error("Tidak ada algoritma enkripsi yang didukung tersedia.")
             return False, None
 
-        large_file_threshold = config.get("large_file_threshold", 10 * 1024 * 1024)
+        # Refactored to always use streaming for better memory management.
+        # This makes the code simpler and more efficient for all file sizes.
 
-        # Override to aes-gcm if streaming is possible and file is large
-        if input_size > large_file_threshold and _is_streaming_supported("aes-gcm"):
-            algo = "aes-gcm"
+        # 1. Calculate original checksum by streaming the input file
+        original_checksum_calculator = hashlib.sha256()
+        with open(input_path, 'rb') as f_in:
+            while chunk := f_in.read(config["chunk_size"]):
+                original_checksum_calculator.update(chunk)
+        original_checksum = original_checksum_calculator.digest()
 
-        logger.info(f"Menggunakan algoritma: {algo}")
-
-        if _is_streaming_supported(algo) and input_size > large_file_threshold:
-            print(f"{CYAN}File besar terdeteksi. Menggunakan mode streaming...{RESET}")
-            logger.info(f"Using streaming mode for large file {input_path}")
-
-            # 1. Calculate original checksum by streaming the input file
-            original_checksum_calculator = hashlib.sha256()
-            with open(input_path, 'rb') as f_in:
-                while chunk := f_in.read(config["chunk_size"]):
-                    original_checksum_calculator.update(chunk)
-            original_checksum = original_checksum_calculator.digest()
-
-            # 2. Derive key
-            salt = secrets.token_bytes(config["file_key_length"])
-            key = derive_key_from_password_and_keyfile(password, salt, keyfile_path)
-            if key is None:
-                logger.error(f"Gagal menurunkan kunci untuk {input_path}")
-                return False, None
-
-            # 3. Setup encryptor
-            stream_encryptor = StreamEncryptor(key)
-            nonce = stream_encryptor.nonce
-
-            # 4. Write file header and stream content
-            with open(output_path, 'wb') as f_out:
-                f_out.write(salt)
-                f_out.write(b"STREAMV1")
-
-                algo_bytes = algo.encode('utf-8')
-                f_out.write(len(algo_bytes).to_bytes(1, 'big'))
-                f_out.write(algo_bytes)
-
-                f_out.write(nonce)
-                f_out.write(original_checksum)
-
-                with open(input_path, 'rb') as f_in:
-                    while chunk := f_in.read(config["chunk_size"]):
-                        encrypted_chunk = stream_encryptor.update(chunk)
-                        f_out.write(encrypted_chunk)
-
-                stream_encryptor.finalize()
-                tag = stream_encryptor.tag
-                f_out.write(tag)
-
-            end_time = time.time()
-            duration = end_time - start_time
-            logger.info(f"Durasi enkripsi (streaming): {duration:.2f} detik")
-            print(f"{GREEN}✅ File '{input_path}' berhasil dienkripsi ke '{output_path}' (Streaming Mode).{RESET}")
-            return True, output_path
-
-        # --- Fallback to in-memory for smaller files or unsupported algos ---
-        salt = secrets.token_bytes(config["file_key_length"]) # Gunakan panjang yang sesuai untuk salt
+        # 2. Derive key
+        salt = secrets.token_bytes(config["file_key_length"])
         key = derive_key_from_password_and_keyfile(password, salt, keyfile_path)
         if key is None:
             logger.error(f"Gagal menurunkan kunci untuk {input_path}")
             return False, None
 
-        # --- V14: Secure Memory Locking ---
-        if config.get("enable_secure_memory_locking", False):
-            key_addr = ctypes.addressof((ctypes.c_char * len(key)).from_buffer_copy(key))
-            secure_mlock(key_addr, len(key))
-            logger.debug(f"Kunci disimpan di memori terkunci untuk {input_path}")
-            # Register untuk integrity check
-            if config.get("enable_runtime_data_integrity", False):
-                register_sensitive_data(f"key_{input_path}", key)
+        # 3. Setup encryptor and get nonce
+        # Only AES-GCM is supported for true streaming for now.
+        # This logic can be expanded if other libraries add streaming support.
+        if not _is_streaming_supported(algo):
+            print_error_box(f"Algoritma '{algo}' tidak mendukung mode streaming. Pembatalan.")
+            logger.error(f"Algorithm '{algo}' does not support streaming.")
+            return False, None
 
-        with open(input_path, 'rb') as f_in:
-            plaintext_data = f_in.read()
+        stream_encryptor = StreamEncryptor(key)
+        nonce = stream_encryptor.nonce
 
-        # --- Tambahkan Kompresi di sini ---
-        original_checksum = calculate_checksum(plaintext_data)
-        logger.debug(f"Checksum data (sebelum kompresi): {original_checksum.hex()}")
+        # 4. Write file header and stream content
+        with open(output_path, 'wb') as f_out:
+            f_out.write(salt)
+            f_out.write(b"STREAMV1") # Use a consistent, simple header for streaming format
 
-        if config.get("enable_compression", False):
-            logger.debug("Mengompresi data sebelum encrypted...")
-            plaintext_data = compress_data(plaintext_data)
-        else:
-            logger.debug("Kompresi dinonaktifkan, melewati.")
+            algo_bytes = algo.encode('utf-8')
+            f_out.write(len(algo_bytes).to_bytes(1, 'big'))
+            f_out.write(algo_bytes)
 
-        data = plaintext_data
-        padding_added = 0
-        if add_random_padding:
-            padding_length = secrets.randbelow(config["chunk_size"])
-            random_padding = secrets.token_bytes(padding_length)
-            data = plaintext_data + random_padding
-            padding_added = padding_length
+            f_out.write(nonce)
+            f_out.write(original_checksum)
 
-        if algo == "aes-gcm":
-            if CRYPTOGRAPHY_AVAILABLE:
-                nonce = secrets.token_bytes(config["gcm_nonce_len"])
-                cipher = AESGCM(key)
-                ciphertext = cipher.encrypt(nonce, data, associated_data=None)
-                tag = b""
-            elif PYCRYPTODOME_AVAILABLE:
-                nonce = get_random_bytes(config["gcm_nonce_len"])
-                cipher = AES.new(key, AES.MODE_GCM, nonce=nonce)
-                ciphertext, tag = cipher.encrypt_and_digest(data)
-        elif algo == "chacha20-poly1305":
-            nonce = secrets.token_bytes(12)
-            cipher = ChaCha20Poly1305(key)
-            ciphertext = cipher.encrypt(nonce, data, associated_data=None)
-            tag = b""
-        elif algo == "xchacha20-poly1305":
-            box = nacl.secret.SecretBox(key)
-            nonce = nacl.utils.random(nacl.secret.SecretBox.NONCE_SIZE)
-            ciphertext = box.encrypt(data, nonce)
-            tag = b""
-        elif algo == "aes-siv":
-            siv = SIV(key)
-            # AES-SIV tidak memerlukan nonce; ia deterministik
-            ciphertext = siv.seal(data, associated_data=[])
-            nonce = b"" # Tidak ada nonce untuk AES-SIV
-            tag = b""
+            with open(input_path, 'rb') as f_in:
+                while chunk := f_in.read(config["chunk_size"]):
+                    encrypted_chunk = stream_encryptor.update(chunk)
+                    f_out.write(encrypted_chunk)
 
-        # AEAD ciphers like AES-GCM and ChaCha20-Poly1305 provide authentication, so a separate HMAC is not needed.
+            stream_encryptor.finalize()
+            tag = stream_encryptor.tag
+            f_out.write(tag)
 
-        # --- V10/V11/V12/V13/V14: Custom File Format Shuffle & Dynamic Header (Variable Parts) ---
-        parts_to_write = [
-            ("algo_name", algo.encode('utf-8')),
-            ("nonce", nonce),
-            ("checksum", original_checksum),
-            ("padding_added", padding_added.to_bytes(config["padding_size_length"], byteorder='big')),
-        ]
-        if algo == "aes-gcm" and PYCRYPTODOME_AVAILABLE: # Hanya jika menggunakan pycryptodome
-            parts_to_write.append(("tag", tag))
-        parts_to_write.append(("ciphertext", ciphertext))
-
-        # --- V14: Generate Dynamic Header Parts ---
-        dynamic_header_parts = generate_dynamic_header_parts(input_path, len(plaintext_data))
-        # Update bagian-bagian yang akan ditulis dengan informasi dari dynamic header
-        # Misalnya, kita bisa menyisipkan bagian-bagian ini ke dalam struktur file utama
-        # atau menyimpannya di awal file sebagai header meta.
-        # Untuk saat ini, kita sertakan bagian-bagian dari dynamic_header_parts ke dalam parts_to_write
-        # tapi kita simpan informasi tentang struktur ini di tempat lain (misalnya dalam checksum tambahan atau HMAC).
-        # Kita bisa menyimpan struktur (urutan dan nama bagian) dalam checksum tambahan atau HMAC tambahan.
-        # Atau, kita buat header yang menjelaskan struktur file.
-        # Misalnya: [jumlah_bagian][panjang_nama_bagian][nama_bagian_1][panjang_data_bagian_1][data_bagian_1]...
-        # Kita gunakan pendekatan ini.
-        # Format setiap bagian: [4_byte_nama][4_byte_panjang][data_panjang_byte]
-        final_parts_to_write = []
-        for part_name, part_data in parts_to_write:
-             final_parts_to_write.append((part_name, part_data))
-        # Tambahkan bagian dari dynamic header (ini opsional dan bisa diacak)
-        for dyn_part_name, dyn_part_data in dynamic_header_parts:
-             final_parts_to_write.append((dyn_part_name, dyn_part_data))
-
-        # --- V18: Tambahkan Decoy Blocks ---
-        if config.get("enable_decoy_blocks", False):
-            decoy_count = secrets.randbelow(config.get("decoy_block_count", 5) + 1)
-            for i in range(decoy_count):
-                decoy_size = secrets.randbelow(config.get("decoy_block_max_size", 1024) + 1)
-                decoy_data = secrets.token_bytes(decoy_size)
-                final_parts_to_write.append((f"decoy_{i}", decoy_data))
-                logger.debug(f"Menambahkan blok decoy 'decoy_{i}' dengan ukuran {decoy_size} bytes.")
-
-        shuffled_parts = shuffle_file_parts(final_parts_to_write)
-
-        # --- V14: Dynamic Header Format (Meta Header) ---
-        meta_header_version = config["dynamic_header_version"].to_bytes(2, byteorder='big') # 2 byte versi
-        num_total_parts_bytes = len(shuffled_parts).to_bytes(4, byteorder='big') # 4 byte jumlah bagian
-        meta_header_prefix = meta_header_version + num_total_parts_bytes
-
-        structure_payload = b''
-        for part_name, part_data in shuffled_parts:
-             part_name_bytes = part_name.encode('ascii').ljust(255, b'\x00') # Nama bagian (255 byte, null-terminated)
-             part_size_bytes = len(part_data).to_bytes(4, byteorder='little') # Ukuran bagian (4 byte, little endian)
-             structure_payload += part_name_bytes + part_size_bytes
-
-        # --- V18: Encrypted Meta Header ---
-        header_salt = secrets.token_bytes(16)
-        header_key = derive_key_for_header(key, header_salt)
-        header_nonce = secrets.token_bytes(config["gcm_nonce_len"])
-        header_cipher = AESGCM(header_key)
-        encrypted_structure_payload = header_cipher.encrypt(header_nonce, structure_payload, associated_data=None)
-
-        # V18 FIX: Store the size of the encrypted header
-        encrypted_header_size_bytes = len(encrypted_structure_payload).to_bytes(4, byteorder='big')
-
-        # Simpan nonce header di meta_header_prefix
-        header_to_write = meta_header_prefix + encrypted_header_size_bytes + header_nonce + encrypted_structure_payload
-
-        total_output_size = len(salt) + len(header_salt) + len(header_to_write) + sum(len(part_data) for _, part_data in shuffled_parts)
-
-        with open(output_path, 'wb') as outfile:
-            print_loading_progress()
-            # V18 FIX: Tulis salt di luar header terenkripsi
-            outfile.write(salt)
-            outfile.write(header_salt)
-            # Tulis meta header dulu
-            outfile.write(header_to_write)
-            # Tulis bagian-bagian yang diacak
-            for part_name, part_data in shuffled_parts:
-                outfile.write(part_data) # Data bagian
-                logger.debug(f"Menulis bagian '{part_name}' ({len(part_data)} bytes) ke file output.")
+        output_size = os.path.getsize(output_path)
+        logger.info(f"Ukuran file output: {output_size} bytes")
 
         output_size = os.path.getsize(output_path)
         logger.info(f"Ukuran file output: {output_size} bytes")
@@ -2386,8 +2200,7 @@ def decrypt_file_simple(input_path: str, output_path: str, password: str, keyfil
         output_dir = os.path.dirname(output_path) or "."
         input_size = os.path.getsize(input_path)
         estimated_output_size = input_size
-        statvfs_result = os.statvfs(output_dir)
-        free_space = statvfs_result.f_frsize * statvfs_result.f_bavail
+        total, used, free_space = shutil.disk_usage(output_dir)
 
         if free_space < estimated_output_size:
             required_mb = estimated_output_size / (1024*1024)
@@ -2474,197 +2287,88 @@ def decrypt_file_simple(input_path: str, output_path: str, password: str, keyfil
                     logger.error(f"Streaming decryption error: {e}", exc_info=True)
                     return False, None
 
-        # --- Fallback to in-memory for old format ---
-        print(f"{YELLOW}Format file lama terdeteksi. Menggunakan mode in-memory...{RESET}")
-        file_structure = []
-        parts_read = {}
-        with open(input_path, 'rb') as infile:
-            # V18 FIX: Baca salt dari luar header
-            salt = infile.read(config["file_key_length"])
-            header_salt = infile.read(16)
+        # Refactored to always use streaming, removing the old in-memory format.
+        # This simplifies the code and makes it memory-efficient for all file sizes.
 
-            # --- V18: Baca Dynamic Meta Header ---
-            meta_header_prefix_size = 2 + 4 # Versi (2) + Jumlah Bagian (4)
-            meta_header_prefix = infile.read(meta_header_prefix_size)
-            version_bytes = meta_header_prefix[:2]
-            num_total_parts_bytes = meta_header_prefix[2:6]
+        # We will now only support the "STREAMV1" format.
+        # The old, complex, multi-part format is deprecated.
+        print(f"{YELLOW}Mendekripsi file format STREAMV1...{RESET}")
 
-            version = int.from_bytes(version_bytes, byteorder='big')
-            num_total_parts = int.from_bytes(num_total_parts_bytes, byteorder='big')
-            logger.debug(f"Meta header dinamis dibaca: Versi={version}, Num_Total_Parts={num_total_parts}")
+        with open(input_path, 'rb') as f_in:
+            # 1. Read header
+            salt = f_in.read(config["file_key_length"])
+            magic_bytes = f_in.read(8)
+            if magic_bytes != b"STREAMV1":
+                print_error_box("Format file tidak dikenal atau rusak (magic bytes tidak cocok).")
+                logger.error(f"Invalid file format for {input_path}. Expected STREAMV1.")
+                return False, None
 
-            # V18 FIX: Read the size of the encrypted header
-            encrypted_header_size_bytes = infile.read(4)
-            encrypted_header_size = int.from_bytes(encrypted_header_size_bytes, byteorder='big')
+            algo_len = int.from_bytes(f_in.read(1), 'big')
+            algo = f_in.read(algo_len).decode('utf-8')
+            nonce = f_in.read(config["gcm_nonce_len"])
+            stored_checksum = f_in.read(32)
 
-            # --- V18: Decrypt Meta Header ---
-            header_nonce = infile.read(config["gcm_nonce_len"])
-            encrypted_structure_payload = infile.read(encrypted_header_size)
-
+            # 2. Derive key and setup decryptor
             key = derive_key_from_password_and_keyfile(password, salt, keyfile_path)
             if key is None:
-                logger.error(f"Gagal menurunkan kunci untuk {input_path}")
                 return False, None
 
-            header_key = derive_key_for_header(key, header_salt)
-            header_cipher = AESGCM(header_key)
+            # 3. Read the tag from the END of the file.
+            f_in.seek(-config["gcm_tag_len"], os.SEEK_END)
+            tag = f_in.read(config["gcm_tag_len"])
+
+            # 4. Position stream at the beginning of the ciphertext
+            header_size = config["file_key_length"] + 8 + 1 + algo_len + len(nonce) + len(stored_checksum)
+            f_in.seek(header_size)
+
+            stream_decryptor = StreamDecryptor(key, nonce, tag)
+            calculated_checksum_calculator = hashlib.sha256()
+
+            # 5. Decrypt and write chunk by chunk, calculating checksum simultaneously
             try:
-                decrypted_meta_header_structure_info = header_cipher.decrypt(header_nonce, encrypted_structure_payload, associated_data=None)
-            except Exception as e:
-                print(f"{RED}❌ Error: Gagal mendekripsi header. Password/Keyfile mungkin salah atau file rusak.{RESET}")
-                logger.error(f"Gagal mendekripsi header: {e}")
-                return False, None
+                with open(output_path, 'wb') as f_out:
+                    # Calculate the size of the encrypted content
+                    content_end_pos = input_size_log - config["gcm_tag_len"]
+                    bytes_to_read = content_end_pos - f_in.tell()
 
-            # --- V18: Parse Info Struktur dari Meta Header yang Telah Didekripsi ---
-            structure_info_idx = 0
-            file_structure = []
-            for _ in range(num_total_parts):
-                part_name_padded_bytes = decrypted_meta_header_structure_info[structure_info_idx : structure_info_idx + 255]
-                structure_info_idx += 255
-                part_name = part_name_padded_bytes.decode('ascii').strip('\x00')
-                part_size_bytes = decrypted_meta_header_structure_info[structure_info_idx : structure_info_idx + 4]
-                structure_info_idx += 4
-                part_size = int.from_bytes(part_size_bytes, byteorder='little')
-                file_structure.append((part_name, part_size))
-                logger.debug(f"Struktur file: Bagian '{part_name}', Ukuran: {part_size} bytes")
+                    while bytes_to_read > 0:
+                        chunk_size = min(config["chunk_size"], bytes_to_read)
+                        chunk = f_in.read(chunk_size)
+                        if not chunk: break
 
-            # --- V18: Baca Bagian-Bagian Berdasarkan Struktur ---
-            for part_name, part_size in file_structure:
-                 part_data = infile.read(part_size)
-                 if len(part_data) != part_size:
-                      print(f"{RED}❌ Error: File input rusak (data bagian '{part_name}' tidak lengkap).{RESET}")
-                      logger.error(f"Data bagian '{part_name}' tidak lengkap di {input_path}")
-                      return False, None
-                 parts_read[part_name] = part_data
-                 logger.debug(f"Bagian '{part_name}' ({part_size} bytes) dibaca dari file input.")
+                        decrypted_chunk = stream_decryptor.update(chunk)
+                        f_out.write(decrypted_chunk)
+                        calculated_checksum_calculator.update(decrypted_chunk)
+                        bytes_to_read -= len(chunk)
 
+                stream_decryptor.finalize() # This will raise InvalidTag on failure
+                calculated_checksum = calculated_checksum_calculator.digest()
 
-        # Ambil bagian-bagian yang diperlukan
-        algo_name_bytes = parts_read.get("algo_name")
-        if algo_name_bytes:
-            algo = algo_name_bytes.decode('utf-8')
-        else:
-            # Fallback for old file format
-            algo = config.get("encryption_algorithm", "aes-gcm").lower()
-            logger.warning(f"File format lama terdeteksi. Menggunakan algoritma dari konfigurasi: {algo}")
-
-        nonce = parts_read.get("nonce")
-        stored_checksum = parts_read.get("checksum")
-        padding_size_bytes = parts_read.get("padding_added")
-        tag = parts_read.get("tag") # Bisa None jika cryptography
-        ciphertext = parts_read.get("ciphertext")
-
-        if not all([nonce is not None, stored_checksum, padding_size_bytes, ciphertext]):
-             print(f"{RED}❌ Error: File input tidak valid atau rusak (bagian penting hilang).{RESET}")
-             logger.error(f"File input '{input_path}' rusak atau tidak lengkap.")
-             return False, None
-
-        # Konversi padding_added kembali dari bytes
-        padding_added = int.from_bytes(padding_size_bytes, byteorder='big')
-
-        # --- V14: Secure Memory Locking ---
-        if config.get("enable_secure_memory_locking", False):
-            key_addr = ctypes.addressof((ctypes.c_char * len(key)).from_buffer_copy(key))
-            secure_mlock(key_addr, len(key))
-            logger.debug(f"Kunci disimpan di memori terkunci untuk {input_path}")
-            # Register untuk integrity check
-            if config.get("enable_runtime_data_integrity", False):
-                register_sensitive_data(f"key_{input_path}", key)
-
-        # AEAD ciphers like AES-GCM and ChaCha20-Poly1305 provide authentication, so a separate HMAC is not needed.
-
-        # --- Decryption berdasarkan algoritma ---
-        try:
-            if algo == "aes-gcm":
-                if PYCRYPTODOME_AVAILABLE:
-                    cipher = AES.new(key, AES.MODE_GCM, nonce=nonce)
-                    plaintext_data = cipher.decrypt_and_verify(ciphertext, tag)
-                elif CRYPTOGRAPHY_AVAILABLE:
-                    cipher = AESGCM(key)
-                    plaintext_data = cipher.decrypt(nonce, ciphertext, associated_data=None)
+                if constant_time_compare(calculated_checksum, stored_checksum):
+                     end_time = time.time()
+                     duration = end_time - start_time
+                     logger.info(f"Durasi dekripsi (streaming): {duration:.2f} detik")
+                     print(f"{GREEN}✅ File '{input_path}' berhasil didekripsi ke '{output_path}'.{RESET}")
+                     return True, output_path
                 else:
-                    raise RuntimeError("Tidak ada pustaka tersedia untuk dekripsi AES-GCM.")
-            elif algo == "chacha20-poly1305":
-                cipher = ChaCha20Poly1305(key)
-                plaintext_data = cipher.decrypt(nonce, ciphertext, associated_data=None)
-            elif algo == "xchacha20-poly1305":
-                box = nacl.secret.SecretBox(key)
-                plaintext_data = box.decrypt(ciphertext)
-            elif algo == "aes-siv":
-                siv = SIV(key)
-                plaintext_data = siv.open(ciphertext, associated_data=[])
-            else:
-                raise ValueError(f"Algoritma tidak dikenal: {algo}")
-        except Exception as e:
-            print(f"{RED}❌ Error: Dekripsi gagal. Kunci mungkin salah atau file rusak.{RESET}")
-            logger.error(f"Dekripsi gagal untuk algoritma {algo}: {e}")
-            return False, None
+                    print_error_box("Dekripsi gagal: Checksum tidak cocok.")
+                    logger.error(f"Checksum mismatch for decrypted file {output_path}")
+                    os.remove(output_path) # Hapus file output yang korup
+                    return False, None
 
-        if padding_added > 0:
-            if len(plaintext_data) < padding_added:
-                print(f"{RED}❌ Error: File input rusak (padding yang disimpan lebih besar dari data hasil decryption).{RESET}")
-                logger.error(f"Padding yang disimpan lebih besar dari data hasil decryption di {input_path}") # Perbaikan: gunakan input_path
+            except crypto_exceptions.InvalidTag:
+                print_error_box("Dekripsi gagal: Kunci salah atau file rusak (Invalid Tag).")
+                logger.error("Decryption failed due to InvalidTag.", exc_info=True)
+                if os.path.exists(output_path): os.remove(output_path)
                 return False, None
-            final_plaintext = plaintext_data[:-padding_added]
-        else:
-            final_plaintext = plaintext_data
+            except Exception as e:
+                print_error_box(f"Terjadi kesalahan saat dekripsi streaming: {e}")
+                logger.error(f"Streaming decryption error: {e}", exc_info=True)
+                if os.path.exists(output_path): os.remove(output_path)
+                return False, None
 
-        # --- V9: Deobfuskasi di Memori ---
-        if config.get("enable_memory_obfuscation", False):
-             final_plaintext = deobfuscate_memory(final_plaintext)
-
-        # --- Tambahkan Dekompresi di sini ---
-        if config.get("enable_compression", False):
-            logger.debug("Mendekompresi data setelah decryption...")
-            final_plaintext = decompress_data(final_plaintext)
-        else:
-            logger.debug("Kompresi dinonaktifkan, melewati dekompresi.")
-
-        calculated_checksum = calculate_checksum(final_plaintext)
-        logger.debug(f"Checksum hasil decryption (setelah dekompresi jika diaktifkan): {calculated_checksum.hex()}")
-        logger.debug(f"Checksum yang disimpan: {stored_checksum.hex()}")
-
-        if calculated_checksum == stored_checksum:
-            # --- V12/V13/V14: Gunakan mmap untuk file besar ---
-            large_file_threshold = config.get("large_file_threshold", 10 * 1024 * 1024) # 10MB default
-            if config.get("use_mmap_for_large_files", False) and len(final_plaintext) > large_file_threshold:
-                print(f"{CYAN}Menggunakan mmap untuk menulis file besar...{RESET}")
-                with open(output_path, 'wb') as outfile:
-                    with mmap.mmap(outfile.fileno(), len(final_plaintext), access=mmap.ACCESS_WRITE) as mmapped_outfile:
-                        mmapped_outfile[:] = final_plaintext
-            else:
-                with open(output_path, 'wb') as outfile:
-                    print_loading_progress()
-                    outfile.write(final_plaintext)
-
-            output_size = os.path.getsize(output_path)
-            logger.info(f"Ukuran file output: {output_size} bytes")
-
-            end_time = time.time()
-            duration = end_time - start_time
-            logger.info(f"Durasi decryption: {duration:.2f} detik")
-
-            # --- Hardening V14: Secure Memory Overwrite (FIXED) ---
-            if config.get("enable_secure_memory_overwrite", False):
-                secure_overwrite_variable(key)
-                secure_overwrite_variable(final_plaintext)
-                secure_overwrite_variable(plaintext_data)
-                secure_overwrite_variable(stored_checksum)
-                secure_overwrite_variable(calculated_checksum)
-                # Variabel lain yang sensitif bisa ditambahkan di sini
-
-            if hide_paths:
-                print(f"{GREEN}✅ File berhasil didecryption.{RESET}")
-                logger.info(f"Decryption (simple) berhasil ke file di direktori: {output_dir}")
-            else:
-                print(f"{GREEN}✅ File '{input_path}' berhasil didecryption ke '{output_path}' (Simple Mode).{RESET}")
-                logger.info(f"Decryption (simple) berhasil dan checksum cocok: {input_path} -> {output_path}")
-
-            return True, output_path
-        else:
-            print(f"{RED}❌ Error: Decryption gagal. Checksum tidak cocok. File mungkin rusak atau dimanipulasi.{RESET}")
-            logger.error(f"Decryption (simple) gagal (checksum tidak cocok) untuk {input_path} -> {output_path}")
-            return False, None
+        # This part of the code is now unreachable because we return inside the `with` block.
+        # Kept for logical structure, but can be removed.
 
     except FileNotFoundError:
         if hide_paths:
@@ -3278,8 +2982,7 @@ def decrypt_file_with_master_key(input_path: str, output_path: str, key_manager:
         output_dir = os.path.dirname(output_path) or "."
         input_size = os.path.getsize(input_path)
         estimated_output_size = input_size
-        statvfs_result = os.statvfs(output_dir)
-        free_space = statvfs_result.f_frsize * statvfs_result.f_bavail
+        total, used, free_space = shutil.disk_usage(output_dir)
 
         if free_space < estimated_output_size:
             required_mb = estimated_output_size / (1024*1024)
@@ -3490,16 +3193,6 @@ def decrypt_file_with_master_key(input_path: str, output_path: str, key_manager:
                 register_sensitive_data(f"file_key_{input_path}", file_key)
 
         # AEAD ciphers like AES-GCM and ChaCha20-Poly1305 provide authentication, so a separate HMAC is not needed.
-
-        hmac_key = derive_hmac_key_from_master_key(master_key, input_path)
-        # --- V14: Secure Memory Locking untuk HMAC Key ---
-        if config.get("enable_secure_memory_locking", False):
-            hmac_key_addr = ctypes.addressof((ctypes.c_char * len(hmac_key)).from_buffer_copy(hmac_key))
-            secure_mlock(hmac_key_addr, len(hmac_key))
-            logger.debug(f"HMAC Key disimpan di memori terkunci untuk {input_path}")
-            # Register untuk integrity check
-            if config.get("enable_runtime_data_integrity", False):
-                register_sensitive_data(f"hmac_key_{input_path}", hmac_key)
 
         # --- Decryption berdasarkan algoritma ---
         algo_name_bytes = parts_read.get("algo_name")
@@ -3763,87 +3456,33 @@ def interactive_encrypt():
 
         algo_choice = input(f"{BOLD}Pilihan: {RESET}").strip()
 
-        if algo_choice == '1':
-            base_algorithm = AlgorithmNegotiator.get_best_algorithm()
-            if base_algorithm is None:
-                print_error_box("Tidak ada algoritma yang didukung tersedia.")
-                return
-        elif algo_choice == '2':
-            base_algorithm = "aes-gcm"
-        elif algo_choice == '3':
-            base_algorithm = "chacha20-poly1305"
-        elif algo_choice == '4':
-            base_algorithm = "xchacha20-poly1305"
-        elif algo_choice == '5':
-            base_algorithm = "aes-siv"
-        else:
+        # Using a temporary copy of config to change algorithm
+        original_preferred_list = config["preferred_algorithm_priority"]
+        algo_map = {
+            '2': "aes-gcm",
+            '3': "chacha20-poly1305",
+            '4': "xchacha20-poly1305",
+            '5': "aes-siv",
+        }
+
+        if algo_choice in algo_map:
+            chosen_algo = algo_map[algo_choice]
+            # Set the chosen algorithm as the highest priority
+            config["preferred_algorithm_priority"] = [chosen_algo] + [a for a in original_preferred_list if a != chosen_algo]
+        elif algo_choice != '1':
             print_error_box("Pilihan tidak valid.")
             return
 
-        print(f"{CYAN}Menggunakan algoritma: {base_algorithm}{RESET}")
-        encryption_layers = [base_algorithm]
+        success, final_output_path = encrypt_file_simple(input_path, output_path, password, keyfile_path)
 
-        current_file = input_path
-
-        # Layered encryption requires temporary files.
-        temp_dir = config.get("temp_dir", "./temp_thena")
-        os.makedirs(temp_dir, exist_ok=True)
-        temp_fd, temp_output_path = tempfile.mkstemp(suffix=".layer1.tmp", dir=temp_dir)
-        os.close(temp_fd)
-        temp_files_created.add(temp_output_path)
-
-        # Using a temporary copy of config to change algorithm
-        original_algorithm = config["encryption_algorithm"]
-        config["encryption_algorithm"] = base_algorithm
-
-        success, _ = encrypt_file_simple(current_file, temp_output_path, password, keyfile_path, confirm_filename_prompt=False)
-
-        config["encryption_algorithm"] = original_algorithm # revert config change
+        # Revert config change
+        config["preferred_algorithm_priority"] = original_preferred_list
 
         if not success:
-            print_error_box("Gagal saat enkripsi dasar.")
+            print_error_box("Gagal saat enkripsi.")
             return
 
-        current_file = temp_output_path
-
-        # --- RSA Layer ---
-        use_rsa = input(f"{BOLD}Gunakan RSA untuk mengamankan kunci AES? (y/N): {RESET}").strip().lower()
-        if use_rsa in ['y', 'yes']:
-            encryption_layers.append("rsa")
-            temp_fd, next_temp_file = tempfile.mkstemp(suffix=".layer2.tmp", dir=temp_dir)
-            os.close(temp_fd)
-            temp_files_created.add(next_temp_file)
-            if apply_rsa_layer(current_file, next_temp_file, password, keyfile_path):
-                current_file = next_temp_file
-            else:
-                print_error_box("Gagal menerapkan lapisan RSA.")
-                return
-
-        # --- Curve25519 Layer ---
-        use_curve = input(f"{BOLD}Gunakan lapisan Curve25519 untuk keamanan tambahan? (y/N): {RESET}").strip().lower()
-        if use_curve in ['y', 'yes']:
-            encryption_layers.append("curve25519")
-            temp_fd, next_temp_file = tempfile.mkstemp(suffix=".layer3.tmp", dir=temp_dir)
-            os.close(temp_fd)
-            temp_files_created.add(next_temp_file)
-            if apply_curve25519_layer(current_file, next_temp_file, password, keyfile_path):
-                current_file = next_temp_file
-            else:
-                print_error_box("Gagal menerapkan lapisan Curve25519.")
-                return
-
-        # --- Finalizing File ---
-        metadata = {"layers": encryption_layers}
-        metadata_bytes = json.dumps(metadata).encode('utf-8')
-        metadata_len = len(metadata_bytes).to_bytes(2, 'big')
-
-        with open(output_path, "wb") as f_out:
-            f_out.write(metadata_len)
-            f_out.write(metadata_bytes)
-            with open(current_file, "rb") as f_in:
-                f_out.write(f_in.read())
-
-        print(f"{GREEN}✅ File berhasil dienkripsi ke '{output_path}' dengan lapisan: {', '.join(encryption_layers)}{RESET}")
+        print(f"{GREEN}✅ File berhasil dienkripsi ke '{final_output_path}'.{RESET}")
 
         delete_original = input(f"{BOLD}Hapus file asli secara AMAN setelah enkripsi? (y/N): {RESET}").strip().lower()
         if delete_original in ['y', 'yes']:
@@ -3853,8 +3492,7 @@ def interactive_encrypt():
         print_error_box(f"Terjadi error saat enkripsi: {e}")
         logger.error(f"Error during interactive encryption: {e}", exc_info=True)
     finally:
-        # atexit handler will clean up temp files.
-        pass
+        cleanup_temp_files()
 
 def read_metadata(input_path: str) -> (list, int):
     """Reads the metadata header from the input file."""
@@ -3903,61 +3541,13 @@ def interactive_decrypt():
                 print_error_box("File keyfile tidak ditemukan.")
                 return
 
-        encryption_layers, header_size = read_metadata(input_path)
-        if not encryption_layers:
-            print_error_box("Tidak dapat membaca lapisan enkripsi dari file. File mungkin rusak atau bukan format yang didukung.")
+        success, final_output_path = decrypt_file_simple(input_path, output_path, password, keyfile_path)
+
+        if not success:
+            print_error_box("Gagal saat dekripsi.")
             return
 
-        print(f"{CYAN}Mendekripsi file dengan lapisan: {', '.join(encryption_layers)}{RESET}")
-
-        # For layered decryption, we must use temporary files, regardless of config
-        temp_dir = config.get("temp_dir", "./temp_thena")
-        os.makedirs(temp_dir, exist_ok=True)
-        temp_fd, current_file = tempfile.mkstemp(suffix=".encrypted_content", dir=temp_dir)
-        os.close(temp_fd)
-        temp_files_created.add(current_file)
-
-        with open(input_path, "rb") as f_in, open(current_file, "wb") as f_out:
-            f_in.seek(header_size)
-            f_out.write(f_in.read())
-        # Decrypt layers in reverse order of how they were applied
-        reversed_layers = encryption_layers[::-1]
-
-        for i, layer in enumerate(reversed_layers):
-            # For the last layer, the output is the final decrypted file
-            if i == len(reversed_layers) - 1:
-                next_output_file = output_path
-            else:
-                temp_fd, next_output_file = tempfile.mkstemp(suffix=f".decrypted_layer_{i}.tmp", dir=temp_dir)
-                os.close(temp_fd)
-                temp_files_created.add(next_output_file)
-
-            success = False
-            if layer == "curve25519":
-                success = remove_curve25519_layer(current_file, next_output_file, password, keyfile_path)
-            elif layer == "rsa":
-                success = remove_rsa_layer(current_file, next_output_file, password, keyfile_path)
-            elif layer in ["aes-gcm", "chacha20-poly1305", "xchacha20-poly1305", "aes-siv"]:
-                # Temporarily set the config for decrypt_file_simple
-                original_algorithm = config["encryption_algorithm"]
-                config["encryption_algorithm"] = layer
-                success, _ = decrypt_file_simple(current_file, next_output_file, password, keyfile_path, confirm_overwrite_prompt=False)
-                config["encryption_algorithm"] = original_algorithm
-            else:
-                print_error_box(f"Lapisan enkripsi tidak dikenal: {layer}")
-                return
-
-            if not success:
-                print_error_box(f"Gagal saat mendekripsi lapisan '{layer}'.")
-                return
-
-            # The output of this step is the input for the next
-            current_file = next_output_file
-            if i < len(reversed_layers) - 1:
-                temp_files_created.add(current_file)
-
-
-        print(f"{GREEN}✅ File berhasil didekripsi ke '{output_path}'{RESET}")
+        print(f"{GREEN}✅ File berhasil didekripsi ke '{final_output_path}'{RESET}")
 
         delete_encrypted = input(f"{BOLD}Hapus file terenkripsi setelah dekripsi? (y/N): {RESET}").strip().lower()
         if delete_encrypted in ['y', 'yes']:
@@ -3967,8 +3557,7 @@ def interactive_decrypt():
         print_error_box(f"Terjadi error saat dekripsi: {e}")
         logger.error(f"Error during interactive decryption: {e}", exc_info=True)
     finally:
-        # atexit handler will clean up temp files.
-        pass
+        cleanup_temp_files()
 
 def interactive_mode():
     """The main interactive mode function."""
