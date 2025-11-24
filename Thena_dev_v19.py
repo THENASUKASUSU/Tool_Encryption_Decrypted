@@ -119,6 +119,163 @@ except ImportError:
     CPUINFO_AVAILABLE = False
     print(f"{YELLOW}⚠️  Modul 'cpuinfo' tidak tersedia. Hardware detection dinonaktifkan.{RESET}")
 
+# --- Nama File Konfigurasi dan Log ---
+CONFIG_FILE = "thena_config_v18.json"
+LOG_FILE = "thena_encryptor.log"
+
+# --- Fungsi untuk Memuat Konfigurasi ---
+def load_config():
+    """Loads the configuration from a JSON file.
+
+    If the configuration file does not exist, it is created with default
+    values.
+
+    Returns:
+        A dictionary containing the configuration.
+    """
+    # Nilai default ditingkatkan untuk keamanan dan fungsionalitas V18
+    default_config = {
+        "kdf_type": "argon2id",
+        "encryption_algorithm": "hybrid-rsa-x25519",  # Deprecated for new encryptions, use preferred_algorithm_priority
+        "preferred_algorithm_priority": ["xchacha20-poly1305", "aes-siv", "chacha20-poly1305", "aes-gcm"],
+        "rsa_key_size": 4096,
+        "argon2_time_cost": 25,
+        "argon2_memory_cost": 2**21,
+        "argon2_parallelism": 4, # V17: Ditingkatkan
+        "scrypt_n": 2**21, # V17: Ditingkatkan
+        "scrypt_r": 8,
+        "scrypt_p": 1,
+        "pbkdf2_iterations": 200000, # V17: Ditingkatkan
+        "pbkdf2_hash_algorithm": "sha256", # Algoritma hash untuk PBKDF2
+        "chunk_size": 64 * 1024,
+        "master_key_file": ".master_key_encrypted_v18", # Ubah nama file master key
+        "rsa_private_key_file": "rsa_private_key_v18.pem",
+        "x25519_private_key_file": "x25519_private_key_v18.pem",
+        "padding_size_length": 4,
+        "checksum_length": 32,
+        "master_key_salt_len": 16,
+        "file_key_length": 32,
+        "gcm_nonce_len": 12, # Untuk AES-GCM (standar adalah 96 bit / 12 byte)
+        "gcm_tag_len": 16,   # Untuk AES-GCM
+        "enable_compression": False, # Opsi kompresi
+        "compression_level": 6, # Level kompresi zlib (0-9)
+        "batch_parallel": False, # Opsi eksekusi batch paralel
+        "batch_workers": 2, # Jumlah worker jika paralel
+        "hkdf_info_prefix": "thena_file_key_", # Awalan untuk info HKDF
+        "enable_recursive_batch": False, # Opsi batch rekursif
+        "output_name_suffix": "", # Suffix untuk nama output batch
+        "use_hmac_verification": True, # Opsi verifikasi HMAC tambahan (V7)
+        "hmac_key_length": 32, # Panjang kunci HMAC (V7)
+        "argon2_for_hmac": False, # Gunakan Argon2 untuk kunci HMAC (True), atau PBKDF2 (False) (V7)
+        "disable_timestamp_in_filename": False, # Opsi untuk nama file output tanpa timestamp (V8)
+        "verify_output_integrity": True, # Opsi verifikasi integritas file output (V8)
+        "log_level": "INFO", # Level logging (V8)
+        "hmac_derivation_info": "thena_hmac_key_", # Info string untuk derivasi HMAC (V8 - Fixed HMAC)
+        "enable_temp_files": False, # Opsi untuk menyimpan data sementara ke file (V9 - Hardening)
+        "temp_dir": "./temp_thena", # Direktori untuk file sementara (V9 - Hardening)
+        "max_file_size": 100 * 1024 * 1024, # Batas maksimal ukuran file yang diproses (100MB) (V9 - Hardening)
+        "enable_memory_obfuscation": False, # Opsi untuk obfuskasi data di memori (V9 - Hardening)
+        "memory_obfuscation_key": "", # Kunci untuk obfuskasi memori (V9 - Hardening)
+        # --- V10/V11/V12/V13: Konfigurasi Hardening Lanjutan ---
+        "enable_secure_memory": True, # Opsi untuk mlock dan overwrite variabel sensitif (V10/V11/V12/V13/v14)
+        "enable_runtime_integrity": False, # Opsi untuk runtime integrity checks (V10/V11/V12/V13/v14)
+        "enable_anti_debug": True, # Opsi untuk anti-debugging techniques (V10/V11/V12/V13/v14)
+        "custom_format_shuffle": True, # Opsi untuk mengacak urutan bagian file output (V10/V11/V12/V13/v14)
+        "custom_format_encrypt_header": True, # Opsi untuk mengEncrypted header file output (V10/V11/V12/V13/v14)
+        "integrity_check_interval": 5, # Interval (detik) untuk pemeriksaan integritas runtime (V10/V11/V12/V13/v14)
+        "debug_detection_methods": ["check_pydevd", "check_ptrace"], # Metode deteksi debug (V10/V11/V12/V13/v14)
+        # --- V12/V13/v14: Konfigurasi Hardening Lanjutan ---
+        "use_mmap_for_large_files": True, # V12/V13/v14: Gunakan mmap untuk file besar (performa/hardening)
+        "large_file_threshold": 10 * 1024 * 1024, # V12/V13/v14: Ambang batas file besar (10MB)
+        "dynamic_header_version": 2, # v14: Ditingkatkan versi header dinamis
+        "dynamic_header_encryption_key_length": 32, # V12/V13/v14: Panjang kunci untuk Encrypted header dinamis
+        "enable_secure_memory_overwrite": False, # V12/V13/v14: Aktifkan overwrite variabel sensitif
+        "enable_dynamic_header_integrity_check": True, # V12/V13/v14: Aktifkan verifikasi integritas header dinamis
+        "hardware_integration_enabled": False, # V12/V13/v14: Placeholder untuk integrasi hardware (TPM)
+        "post_quantum_ready": False, # V12/V13/v14: Placeholder untuk kriptografi post-kuantum
+        # --- v14: Konfigurasi Hardening Lanjutan ---
+        "enable_secure_memory_locking": False, # v14: Aktifkan mlock (jika tersedia)
+        "enable_runtime_data_integrity": False, # v14: Aktifkan pemeriksaan integritas data di memori
+        "custom_format_variable_parts": True, # v14: Aktifkan struktur bagian file yang bervariasi
+        "header_derivation_info": "thena_header_enc_key_", # v14: Info string untuk derivasi kunci header
+        # --- V18: Konfigurasi Obfuscation ---
+        "enable_decoy_blocks": True, # Aktifkan blok data umpan (decoy)
+        "decoy_block_max_size": 1024, # Ukuran maksimum blok decoy (bytes)
+        "decoy_block_count": 5, # Jumlah maksimum blok decoy
+        # --- V19: Performance Tuning ---
+        "auto_tune_performance": True, # Aktifkan penyesuaian performa otomatis
+    }
+
+    config_path = Path(CONFIG_FILE)
+    if config_path.exists():
+        try:
+            with open(config_path, 'r') as f:
+                config = json.load(f)
+            # Pastikan semua kunci default ada
+            for key, value in default_config.items():
+                if key not in config:
+                    config[key] = value
+            print(f"{CYAN}Konfigurasi V18 dimuat dari {CONFIG_FILE}{RESET}")
+        except json.JSONDecodeError:
+            print(f"{RED}Error membaca {CONFIG_FILE}, menggunakan nilai default V18.{RESET}")
+            config = default_config
+    else:
+        config = default_config
+        try:
+            with open(config_path, 'w') as f:
+                json.dump(config, f, indent=4)
+            print(f"{CYAN}File konfigurasi default V18 '{CONFIG_FILE}' dibuat.{RESET}")
+        except IOError:
+            print(f"{RED}Gagal membuat file konfigurasi V18 '{CONFIG_FILE}'. Menggunakan nilai default.{RESET}")
+            config = default_config
+    return config
+
+# --- Setup Logging ---
+def setup_logging(interactive_mode=False):
+    """Configures the logging for the application."""
+    level = getattr(logging, config.get("log_level", "INFO").upper(), logging.INFO)
+
+    # Tentukan handlers berdasarkan mode
+    handlers = [logging.FileHandler(LOG_FILE)]
+    if not interactive_mode:
+        handlers.append(logging.StreamHandler())
+
+    logging.basicConfig(
+        level=level,
+        format='%(asctime)s - %(levelname)s - %(message)s',
+        handlers=handlers,
+        force=True
+    )
+    logger = logging.getLogger(__name__)
+    logger.info("=== Encryptor V18 Dimulai ===")
+
+def print_error_box(message, width=80):
+    """Prints an error message in a formatted box.
+
+    Args:
+        message (str): The error message to display.
+        width (int): The width of the box.
+    """
+    border_color = RED
+    text_color = WHITE
+    reset = RESET
+    print(f"{border_color}╭" + "─" * (width - 2) + f"╮{reset}")
+    print(f"{border_color}│{reset} {text_color}{message.center(width - 4)}{reset} {border_color}│{reset}")
+    print(f"{border_color}╰" + "─" * (width - 2) + f"╯{reset}")
+
+def print_loading_progress():
+    """Prints a simple loading progress indicator to the console."""
+    for i in range(11):
+        progress = i * 10
+        print(f"Memproses... {progress}%", end="\r")
+        time.sleep(0.1)
+    print("Memproses... 100%")
+
+# --- Setup Konfigurasi dan Logger ---
+config = load_config()
+setup_logging()
+logger = logging.getLogger(__name__)
+
 def safe_cpu_info():
     """Safe CPU info detection with fallback for Termux"""
     if not CPUINFO_AVAILABLE:
@@ -128,10 +285,6 @@ def safe_cpu_info():
     except Exception as e:
         logger.warning(f"CPU info detection failed: {e}")
         return {'flags': []}
-
-# --- Nama File Konfigurasi dan Log ---
-CONFIG_FILE = "thena_config_v18.json"
-LOG_FILE = "thena_encryptor.log"
 
 # --- Variabel Global untuk Hardening V10/V11/V12/V13/V14 ---
 integrity_hashes = {} # Dict untuk menyimpan hash fungsi
@@ -349,9 +502,6 @@ def detect_debugging():
     Returns:
         True if a debugger is detected, False otherwise.
     """
-    # Temporarily disable anti-debugging to prevent unexpected script termination
-    return False
-
     methods = config.get("debug_detection_methods", [])
     for method_name in methods:
         method_func = globals().get(method_name)
@@ -364,20 +514,34 @@ def detect_debugging():
     return False
 
 def secure_mlock(addr, length):
-    """Locks memory with Termux compatibility"""
-    if platform.system() == "Linux" and hasattr(os, 'mlock'):
+    """Locks memory with platform-specific calls (Linux/Windows)."""
+    if platform.system() == "Linux":
         try:
-            # Try using os.mlock which works better on Android
-            import ctypes
-            libc = ctypes.CDLL(None)
-            result = libc.mlock(ctypes.c_void_p(addr), ctypes.c_size_t(length))
-            if result == 0:
-                logger.debug(f"Memory locked at {hex(addr)} ({length} bytes)")
+            libc = ctypes.CDLL(ctypes.util.find_library("c"), use_errno=True)
+            if hasattr(libc, 'mlock'):
+                result = libc.mlock(ctypes.c_void_p(addr), ctypes.c_size_t(length))
+                if result == 0:
+                    logger.debug(f"Memory locked at {hex(addr)} ({length} bytes) using mlock.")
+                else:
+                    errno = ctypes.get_errno()
+                    logger.warning(f"mlock failed with errno {errno}: {os.strerror(errno)}")
             else:
-                logger.warning(f"mlock failed: {ctypes.get_errno()}")
+                logger.warning("mlock function not found in libc.")
         except (OSError, AttributeError) as e:
-            logger.warning(f"mlock not available: {e}")
-    # Windows and other platforms remain unchanged
+            logger.warning(f"mlock not available on this Linux system: {e}")
+    elif platform.system() == "Windows":
+        try:
+            kernel32 = ctypes.WinDLL('kernel32')
+            kernel32.VirtualLock.argtypes = [ctypes.c_void_p, ctypes.c_size_t]
+            kernel32.VirtualLock.restype = ctypes.c_bool
+            if kernel32.VirtualLock(addr, length):
+                logger.debug(f"Memory locked at {hex(addr)} ({length} bytes) using VirtualLock.")
+            else:
+                logger.warning(f"VirtualLock failed with error code: {ctypes.get_last_error()}")
+        except (OSError, AttributeError) as e:
+            logger.warning(f"VirtualLock not available on this Windows system: {e}")
+    else:
+        logger.info(f"Memory locking (mlock/VirtualLock) is not implemented for platform: {platform.system()}")
 
 def secure_munlock(addr, length):
     """Unlocks a memory area, allowing it to be swapped to disk.
@@ -1075,6 +1239,10 @@ class PerformanceTuner:
             return
 
         try:
+            if 'psutil' not in sys.modules:
+                logger.warning("Modul 'psutil' tidak tersedia. Auto-tuning dinonaktifkan.")
+                return
+
             # Tune parallelism
             cpu_cores = psutil.cpu_count(logical=False)
             if cpu_cores:
@@ -1087,26 +1255,26 @@ class PerformanceTuner:
 
             # Tune memory_cost
             available_mem_gb = psutil.virtual_memory().available / (1024**3)
-            original_mem_cost = config["argon2_memory_cost"]
-            tuned_mem_cost = original_mem_cost
+            original_mem_cost_kb = config["argon2_memory_cost"]
+            tuned_mem_cost_kb = original_mem_cost_kb
 
             # Adjust based on available RAM, setting safe upper/lower bounds
             if available_mem_gb > 8: # >8GB RAM
-                tuned_mem_cost = 2**21 # ~2GB
+                tuned_mem_cost_kb = 2 * 1024 * 1024 # ~2GB
             elif available_mem_gb > 4: # >4GB RAM
-                tuned_mem_cost = 2**20 # ~1GB
+                tuned_mem_cost_kb = 1 * 1024 * 1024 # ~1GB
             elif available_mem_gb > 2: # >2GB RAM
-                tuned_mem_cost = 2**19 # ~512MB
+                tuned_mem_cost_kb = 512 * 1024 # ~512MB
             else: # <2GB RAM
-                tuned_mem_cost = 2**18 # ~256MB
+                tuned_mem_cost_kb = 256 * 1024 # ~256MB
 
             # Ensure we don't exceed the original configured value as a safeguard
-            tuned_mem_cost = min(original_mem_cost, tuned_mem_cost)
-            config["argon2_memory_cost"] = tuned_mem_cost
+            tuned_mem_cost_kb = min(original_mem_cost_kb, tuned_mem_cost_kb)
+            config["argon2_memory_cost"] = tuned_mem_cost_kb
 
-            if tuned_mem_cost != original_mem_cost:
-                print(f"{CYAN}Auto-Tuning: Argon2 memory_cost disesuaikan ke {tuned_mem_cost // 1024}MB (dari {original_mem_cost // 1024}MB).{RESET}")
-                logger.info(f"Tuned Argon2 memory_cost from {original_mem_cost} to {tuned_mem_cost}")
+            if tuned_mem_cost_kb != original_mem_cost_kb:
+                print(f"{CYAN}Auto-Tuning: Argon2 memory_cost disesuaikan ke {tuned_mem_cost_kb // 1024}MB (dari {original_mem_cost_kb // 1024}MB).{RESET}")
+                logger.info(f"Tuned Argon2 memory_cost from {original_mem_cost_kb} to {tuned_mem_cost_kb}")
 
         except Exception as e:
             logger.warning(f"Gagal melakukan auto-tuning parameter Argon2: {e}")
@@ -1236,19 +1404,26 @@ class AlgorithmNegotiator:
         Selects the best available symmetric encryption algorithm based on a predefined priority list.
 
         Returns:
-            A string identifier for the selected algorithm, or None if no supported algorithms are available.
+            A string identifier for the selected algorithm, or raises a RuntimeError if no supported algorithms are available.
         """
         priority = config.get("preferred_algorithm_priority", [])
         for algo in priority:
             if algo == "xchacha20-poly1305" and PYNACL_AVAILABLE:
+                logger.info(f"Algorithm selected: {algo}")
                 return "xchacha20-poly1305"
             if algo == "aes-siv" and MISCREANT_AVAILABLE:
+                logger.info(f"Algorithm selected: {algo}")
                 return "aes-siv"
             if algo == "chacha20-poly1305" and CRYPTOGRAPHY_AVAILABLE:
+                logger.info(f"Algorithm selected: {algo}")
                 return "chacha20-poly1305"
             if algo == "aes-gcm" and (CRYPTOGRAPHY_AVAILABLE or PYCRYPTODOME_AVAILABLE):
+                logger.info(f"Algorithm selected: {algo}")
                 return "aes-gcm"
-        return None
+
+        err_msg = "Tidak ada algoritma enkripsi yang didukung tersedia. Silakan instal 'cryptography', 'pynacl', atau 'miscreant'."
+        logger.critical(err_msg)
+        raise RuntimeError(err_msg)
 
 class HybridCipher:
     """Manages hybrid encryption combining asymmetric and symmetric ciphers."""
