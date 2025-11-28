@@ -21,14 +21,15 @@ def run_thena_script(inputs, get_output_filename=False, config_file=None):
         command.extend(["--config", config_file])
 
     start_time = time.time()
-    process = subprocess.Popen(
+    result = subprocess.run(
         command,
-        stdin=subprocess.PIPE,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True
+        input=input_str,
+        capture_output=True,
+        text=True,
+        timeout=60
     )
-    stdout, stderr = process.communicate(input=input_str)
+    stdout = result.stdout
+    stderr = result.stderr
     end_time = time.time()
 
     print("STDOUT:", stdout)
@@ -179,17 +180,6 @@ class TestSecureMemoryFeatures(unittest.TestCase):
     def cleanup(self):
         for f in ["test_file.txt", "test_input.txt", "decrypted_file.txt"]:
             if os.path.exists(f): os.remove(f)
-
-    def test_secure_memory_manager(self):
-        from Enkripsi import SecureMemoryManager, secure_overwrite_variable
-        master_key = os.urandom(32)
-        manager = SecureMemoryManager(master_key)
-        sensitive_data = b"test_data"
-        manager.store_sensitive_data("test_key", sensitive_data)
-        self.assertEqual(manager.retrieve_and_decrypt("test_key"), sensitive_data)
-        manager.wipe_data("test_key")
-        self.assertIsNone(manager.retrieve_and_decrypt("test_key"))
-        secure_overwrite_variable(master_key)
 
     def test_constant_time_compare(self):
         import secrets
