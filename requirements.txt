@@ -1,0 +1,13 @@
+cffi==2.0.0
+cryptography==46.0.3
+greenlet==3.2.4
+iniconfig==2.3.0
+packaging==25.0
+playwright==1.55.0
+pluggy==1.6.0
+pycparser==2.23
+pycryptodome==3.23.0
+pyee==13.0.0
+Pygments==2.19.2
+pytest==9.0.2
+typing_extensions==4.15.0
